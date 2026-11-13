@@ -20,10 +20,11 @@ void finiteBuffer(const juce::AudioBuffer<float>& b)
     for(int c=0;c<b.getNumChannels();++c) for(int n=0;n<b.getNumSamples();++n) { const auto x=b.getSample(c,n); finite &= std::isfinite(x); bounded &= std::abs(x)<2.0f; }
     check(finite,"finite audio"); check(bounded,"bounded audio");
 }
-struct Spectrum { double thdDb{}, h2Db{}, h3Db{}, imdDb{}; };
-Spectrum measure(bool ki, bool compressed=false, bool twoTone=false, float frequency=1000)
+struct Spectrum { double thdDb{}, h2Db{}, h3Db{}, imdDb{}, gainDb{}; };
+Spectrum measure(bool ki, bool compressed=false, bool twoTone=false, float frequency=1000,bool analog=false)
 {
     auto processor=std::make_unique<PWMToneBoyAudioProcessor>();
+    set(*processor,"analogMode",analog?1.0f:0.0f);
     set(*processor,"kiMode",ki?1.0f:0.0f); set(*processor,"eqIn",0);
     set(*processor,"ratioIndex",compressed?2.0f:0.0f); set(*processor,"threshold",compressed?-18.0f:0.0f);
     processor->prepareToPlay(48000,256);
@@ -51,7 +52,7 @@ Spectrum measure(bool ki, bool compressed=false, bool twoTone=false, float frequ
     const double fundamental=power(1); double distortion=0;
     for(int h=2;h<=12;++h) if(double(h)*frequency<24000 && !twoTone) distortion+=power(h);
     const auto relativeDb=[&](double energy){return 10*std::log10(juce::jmax(1.0e-20,energy/fundamental));};
-    return {relativeDb(distortion),relativeDb(power(2)),relativeDb(power(3)),relativeDb(imReal*imReal+imImag*imImag)};
+    return {relativeDb(distortion),relativeDb(power(2)),relativeDb(power(3)),relativeDb(imReal*imReal+imImag*imImag),20*std::log10(std::sqrt(fundamental)*2/48000/(compressed?0.5:0.2))};
 }
 float recovery(bool sustained)
 {
@@ -69,7 +70,7 @@ int main(int argc,char** argv)
     juce::ScopedJuceInitialiser_GUI juce;
     juce::MidiBuffer midi;
     PWMToneBoyAudioProcessor p;
-    check(p.getParameters().size()==15,"fifteen parameters including output");
+    check(p.getParameters().size()==16,"sixteen parameters including output and A/D");
     check(std::abs(p.parameter("threshold")+18)<0.001f && p.parameter("ratioIndex")==2 && p.parameter("decayIndex")==1,"parameter defaults");
     check(p.getBypassParameter()==p.apvts.getParameter("bypass"),"host bypass mapping");
     for(float r:PWMToneBoyAudioProcessor::ratios)
@@ -81,7 +82,7 @@ int main(int argc,char** argv)
     }
     for(double sr:{32000.0,44100.0,48000.0,96000.0,192000.0})
     {
-        p.prepareToPlay(sr,128);
+        set(p,"analogMode",1); p.prepareToPlay(sr,128);
         juce::AudioBuffer<float> silence(2,128); silence.clear();
         for(int i=0;i<8;++i) p.processBlock(silence,midi);
         check(silence.getMagnitude(0,128)==0,"bit-exact silence from rest");
@@ -94,7 +95,7 @@ int main(int argc,char** argv)
         set(p,"threshold",-42); set(p,"ratioIndex",6); set(p,"dacCrush",100); set(p,"clockRate",4);
         for(int k=0;k<24;++k)
         {
-            for(const char* id:{"eqIn","hpfIn","linkAutoGain","kiMode","pdaMode","kWeightSc","phonesRawMode","pad"}) set(p,id,float(k%2));
+            for(const char* id:{"eqIn","hpfIn","linkAutoGain","kiMode","pdaMode","kWeightSc","phonesRawMode","pad","analogMode"}) set(p,id,float(k%2));
             juce::AudioBuffer<float> audio(2,257);
             for(int n=0;n<257;++n) { audio.setSample(0,n,float(std::sin((n+k*257)*0.023)*1.5)); audio.setSample(1,n,n%63==0?1.0f:0.0f); }
             p.processBlock(audio,midi); finiteBuffer(audio);
@@ -150,6 +151,47 @@ int main(int argc,char** argv)
     const float shortRecovery=recovery(false), longRecovery=recovery(true);
     check(longRecovery>shortRecovery+0.5f,"sustained program leaves longer release memory");
     std::cout<<"THD dB: clean="<<clean.thdDb<<", KI="<<coloured.thdDb<<", compressed="<<compressed.thdDb<<", bass50Hz="<<bass.thdDb<<"; KI H2/H3="<<coloured.h2Db<<"/"<<coloured.h3Db<<"; IMD 5+6kHz="<<imdClean.imdDb<<"/"<<imdKi.imdDb<<"; recovery short/long="<<shortRecovery<<"/"<<longRecovery<<" dB\n";
+    auto testInput=std::make_unique<std::array<float,8192>>(), testOutput=std::make_unique<std::array<float,8192>>();
+    auto analysis=ToneBoyHarmonicAnalysis::analyse(*testInput,*testOutput,48000);
+    check(analysis.status==ToneBoyHarmonicResult::Status::silence,"harmonic view does not invent a tone in silence");
+    const double tau=juce::MathConstants<double>::twoPi;
+    for(int n=0;n<8192;++n)
+    {
+        const auto phase=tau*997.3*n/48000;
+        (*testInput)[size_t(n)]=float(0.2*std::sin(phase+0.17));
+        (*testOutput)[size_t(n)]=float(0.03+0.2*std::sin(phase-0.42)+0.0002*std::sin(2*phase)+0.00002*std::sin(3*phase));
+    }
+    analysis=ToneBoyHarmonicAnalysis::analyse(*testInput,*testOutput,48000);
+    check(analysis.status==ToneBoyHarmonicResult::Status::valid && std::abs(analysis.frequency-997.3)<0.02,"off-bin fundamental estimated from input");
+    check(std::abs(analysis.harmonicsDb[1]+60)<1 && std::abs(analysis.harmonicsDb[2]+80)<3,"known H2/H3 measured relative to H1 despite phase and DC");
+    check(std::abs(analysis.thdDb+59.9568)<1,"harmonic THD matches known synthetic reference");
+    std::cout<<"Harmonic reference f0="<<analysis.frequency<<" THD="<<analysis.thdDb<<" THD+N="<<analysis.thdnDb<<"\n";
+    check(std::abs(analysis.thdnDb-analysis.thdDb)<1,"noise-free THD+N agrees with known harmonic distortion");
+    for(int n=0;n<8192;++n) (*testOutput)[size_t(n)]+=float(0.001*std::sin(tau*6000*n/48000));
+    analysis=ToneBoyHarmonicAnalysis::analyse(*testInput,*testOutput,48000);
+    check(analysis.thdnDb>analysis.thdDb+8,"THD+N includes nonharmonic residual energy");
+    for(int n=0;n<8192;++n) (*testInput)[size_t(n)]=float(0.1*(std::sin(tau*1000*n/48000)+std::sin(tau*1400*n/48000)));
+    analysis=ToneBoyHarmonicAnalysis::analyse(*testInput,*testOutput,48000);
+    check(analysis.status==ToneBoyHarmonicResult::Status::needsTone,"multitone is rejected as a harmonic test stimulus");
+    const auto linear=[](double f,bool eq=false,float trim=0,bool pad=false){ return PWMToneBoyAudioProcessor::linearResponseDb(f,48000,eq,0,1,trim,pad); };
+    check(std::abs((linear(1000,false,-6)-linear(1000))+6)<1e-6,"linear model includes OUTPUT gain");
+    check(std::abs((linear(1000,false,0,true)-linear(1000))-20*std::log10(0.25))<1e-6,"linear model includes input PAD");
+    check(linear(5)<linear(1000)-40 && linear(52)>linear(1000)+0.5,"linear model includes 18 Hz high-pass and bass contour");
+    check(linear(15000,true)<linear(15000,false)-3,"linear model follows reconstruction switch");
+    const auto measured52=measure(false,false,false,52);
+    check(std::abs(measured52.gainDb-linear(52))<0.1 && std::abs(clean.gainDb-linear(1000))<0.1,"linear model agrees with measured small-signal DSP at 52 Hz and 1 kHz");
+    const auto analog80=measure(false,false,false,80,true);
+    const auto analogModel80=PWMToneBoyAudioProcessor::linearResponseDb(80,48000,false,0,1,0,false,true);
+    check(std::abs(analog80.gainDb-analogModel80)<0.1,"A-mode measured DSP agrees with displayed linear contour");
+    check(analogModel80-linear(80)>0.29 && PWMToneBoyAudioProcessor::linearResponseDb(6000,48000,false,0,1,0,false,true)-linear(6000)<-0.24,"A contour is subtle bass lift and broad treble dip");
+    check(neutral.parameter("analogMode")==0,"D is the default and does not add analog contour");
+    check(PWMToneBoyAudioProcessor::processAnalogColour(0,1)==0,"A colour has no independent noise or DC source");
+    check(analog80.thdDb > -90 && analog80.thdDb < -40,"A changes audio with gentle level-dependent harmonics");
+    auto quietAnalog=std::make_unique<PWMToneBoyAudioProcessor>(); set(*quietAnalog,"analogMode",1); quietAnalog->prepareToPlay(48000,256);
+    juce::AudioBuffer<float> quiet(2,256); quiet.clear(); for(int block=0;block<64;++block) quietAnalog->processBlock(quiet,midi);
+    check(quiet.getMagnitude(0,256)==0,"A and KI together produce bit-exact silence from rest");
+    std::cout<<"Analog A: 80Hz gain="<<analog80.gainDb<<"dB, THD="<<analog80.thdDb<<"dB\n";
+
     // Exercise actual editor rendering at minimum, reference and maximum sizes.
     for(auto* param:restored.getParameters()) param->setValueNotifyingHost(param->getDefaultValue());
     std::unique_ptr<juce::AudioProcessorEditor> editor(restored.createEditor());
@@ -162,6 +204,31 @@ int main(int argc,char** argv)
         check(hit!=nullptr && hit->getName()=="PWM Threshold","scaled threshold hit target matches drawing");
         auto image=editor->createComponentSnapshot(editor->getLocalBounds()); check(image.isValid(),"resized editor snapshot");
         if(argc>1) { juce::File out=juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]).getChildFile("UI-"+juce::String(w)+".png"); out.getParentDirectory().createDirectory(); juce::FileOutputStream stream(out); stream.setPosition(0); stream.truncate(); juce::PNGImageFormat png; png.writeImageToStream(image,stream); }
+    }
+    std::function<DotMatrixLCDComponent*(juce::Component*)> findLcd=[&](juce::Component* component)->DotMatrixLCDComponent* { if(auto* screen=dynamic_cast<DotMatrixLCDComponent*>(component)) return screen; for(auto* child:component->getChildren()) if(auto* screen=findLcd(child)) return screen; return nullptr; };
+    auto* screen=findLcd(editor.get()); check(screen!=nullptr,"editor contains its diagnostic LCD");
+    if(screen)
+    {
+        for(int view=0;view<6;++view) { check(screen->getMode()==view,"LCD cycles through all six views"); screen->advanceView(); }
+        check(screen->getMode()==0,"six LCD clicks return to spectrum");
+        restored.prepareToPlay(48000,256); juce::AudioBuffer<float> signal(2,256);
+        for(int block=0;block<1056;++block) { if(block==1024) juce::Thread::sleep(160); for(int n=0;n<256;++n) for(int c=0;c<2;++c) signal.setSample(c,n,float(0.2*std::sin(tau*1000.3*(block*256+n)/48000))); restored.processBlock(signal,midi); screen->refreshDiagnostics(); }
+        check(screen->getHarmonicResult().status==ToneBoyHarmonicResult::Status::valid,"LCD analyses real final-output telemetry");
+        check(screen->getHarmonicResult().thdnDb < -45,"settled real-output harmonic analysis rejects startup transients");
+        editor->setSize(420,680);
+        for(int view=1;view<=5;++view)
+        {
+            screen->advanceView();
+            if(view>=4 && argc>1) { auto image=editor->createComponentSnapshot(editor->getLocalBounds()); auto out=juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]); juce::FileOutputStream stream(out.getChildFile("UI-M"+juce::String(view)+".png")); stream.setPosition(0); stream.truncate(); juce::PNGImageFormat png; check(png.writeImageToStream(image,stream),"new analysis screen snapshot saved"); }
+        }
+    }
+    set(restored,"analogMode",1);
+    juce::MemoryBlock analogState; restored.getStateInformation(analogState); set(restored,"analogMode",0); restored.setStateInformation(analogState.getData(),int(analogState.getSize()));
+    check(restored.parameter("analogMode")==1,"A/D selector persists with saved state");
+    if(screen && argc>1)
+    {
+        for(int click=0;click<5;++click) screen->advanceView();
+        auto image=editor->createComponentSnapshot(editor->getLocalBounds()); auto out=juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]).getChildFile("UI-M4-A.png"); juce::FileOutputStream stream(out); stream.setPosition(0); stream.truncate(); juce::PNGImageFormat png; check(png.writeImageToStream(image,stream),"A-mode linear screen snapshot saved");
     }
     std::cout<<checks<<" checks, "<<failures<<" failures. Latency: "<<p.getLatencySamples()<<" samples.\n";
     return failures==0?EXIT_SUCCESS:EXIT_FAILURE;

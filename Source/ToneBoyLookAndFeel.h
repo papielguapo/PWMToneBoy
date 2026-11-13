@@ -32,7 +32,20 @@ public:
     {
         const bool on=b.getToggleState(); const auto kind=b.getProperties()["kind"].toString();
         const auto w=float(b.getWidth()),h=float(b.getHeight());
-        if(kind=="toggle")
+        if(kind=="horizontal")
+        {
+            text(g,"A",{7,7,14,15},10);
+            text(g,"D",{w-21,7,14,15},10);
+            const auto cy=h*0.5f;
+            g.setColour(juce::Colour(0xff78777c)); g.fillRoundedRectangle(29,cy-5,w-58,10,5);
+            g.setColour(juce::Colour(0xff36353d)); g.fillRoundedRectangle(32,cy-3,w-64,6,3);
+            const auto cx=on?37.0f:w-37.0f;
+            juce::Rectangle<float> lever(cx-9,cy-7,18,14);
+            g.setGradientFill(juce::ColourGradient(juce::Colours::white,lever.getTopLeft(),juce::Colour(0xff696976),lever.getBottomRight(),false));
+            g.fillRoundedRectangle(lever,4); g.setColour(juce::Colour(0xff555460)); g.drawRoundedRectangle(lever,4,0.8f);
+            g.setColour(navy()); g.drawLine(cx,cy-3,cx,cy+3,1);
+        }
+        else if(kind=="toggle")
         {
             const auto cx=w*0.5f,cy=h*0.48f;
             g.setColour(juce::Colour(0xff777780)); g.fillEllipse(cx-9,cy-8,18,16);

@@ -28,7 +28,7 @@ private:
     Panel panel;
     DotMatrixLCDComponent lcd;
     juce::Slider threshold,ratio,decay,clock,crush;
-    juce::ToggleButton eq,hpf,link,bypass,pad,ki,pda,weight,phones;
+    juce::ToggleButton eq,hpf,link,bypass,pad,ki,pda,weight,phones,analog;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliders;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> buttons;
     juce::ComboBox testChoice;

@@ -4,7 +4,7 @@
 #include <array>
 #include <atomic>
 
-struct ToneBoyScopeFrame { float before{}, after{}, dac{}, pwm{}, reduction{}, output{}; };
+struct ToneBoyScopeFrame { float before{}, after{}, dac{}, pwm{}, reduction{}, output{}, input{}; };
 
 class PWMToneBoyAudioProcessor final : public juce::AudioProcessor
 {
@@ -35,8 +35,13 @@ public:
     static float computeSCurveGainLin(float envelope, float threshold, float ratio) noexcept;
     static float processCraneTriodeEven(float x, float slow, float k2, float grid) noexcept;
     static float processPhoenixSapphireCeiling(float x, float& history) noexcept;
+    static float processAnalogColour(float x,float memory) noexcept;
     float parameter(const char* id) const { return apvts.getRawParameterValue(id)->load(); }
     int readScope(ToneBoyScopeFrame* destination, int maximum);
+    double linearResponseDb(double frequency) const;
+    static double linearResponseDb(double frequency,double rate,bool eq,float threshold,float ratio,float outputDb,bool pad,bool analog=false);
+    std::atomic<double> analysisSampleRate{44100};
+    std::atomic<unsigned> scopeOverruns{0};
     bool loadTestFile(const juce::File&);
     void setTestSource(int source);
     bool isStandalone() const { return wrapperType == wrapperType_Standalone; }
@@ -56,7 +61,7 @@ private:
     };
     struct Channel
     {
-        Biquad scHpf, reconstruction, infra1, infra2, phoenix;
+        Biquad scHpf, reconstruction, infra1, infra2, phoenix, analogLow, analogHigh;
         float fast{}, slow{}, rms{}, previousSc{}, held{}, ceiling{}, quietSeconds{};
         float gainReduction{}, releaseMemory{}, limiterGain{1.0f}, peakHold{};
         std::array<float, 512> dryDelay{};
@@ -68,7 +73,9 @@ private:
     std::array<Channel, 2> channels;
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
     juce::AudioBuffer<float> scratch;
-    std::array<std::atomic<float>*,15> controls{};
+    std::vector<ToneBoyScopeFrame> scopeScratch;
+    std::array<std::atomic<float>*,16> controls{};
+    juce::SmoothedValue<float> analogSmooth;
     juce::SmoothedValue<float> outputSmooth;
     juce::SmoothedValue<float> thresholdSmooth, ratioSmooth, decaySmooth, clockSmooth, crushSmooth, padSmooth, bypassSmooth;
     juce::SmoothedValue<float> eqSmooth, hpfSmooth, linkSmooth, kiSmooth, pdaSmooth, weightSmooth, rawSmooth;

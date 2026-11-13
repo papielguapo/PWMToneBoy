@@ -18,6 +18,7 @@ PWMToneBoyAudioProcessorEditor::PWMToneBoyAudioProcessorEditor(PWMToneBoyAudioPr
     setupButton(ki,"kiMode","lamp",{274,553,28,28},"KI: gain-reduction-dependent even harmonics");
     setupButton(pda,"pdaMode","lamp",{309,553,28,28},"Program-dependent attack: 0.35 to 2.2 ms");
     setupButton(weight,"kWeightSc","lamp",{344,553,28,28},"H-SC: presence emphasis, 65% peak + 35% RMS");
+    setupButton(analog,"analogMode","horizontal",{138,592,111,29},"A: noise-free analog-inspired tone and gentle saturation / D: no added colour");
     if(p.isStandalone())
     {
         addAndMakeVisible(testChoice); addAndMakeVisible(loadButton);
