@@ -21,13 +21,15 @@ void finiteBuffer(const juce::AudioBuffer<float>& b)
     check(finite,"finite audio"); check(bounded,"bounded audio");
 }
 struct Spectrum { double thdDb{}, h2Db{}, h3Db{}, imdDb{}, gainDb{}, modelDb{}; };
-Spectrum measure(bool ki, bool compressed=false, bool twoTone=false, float frequency=1000,bool analog=false,float amplitude=-1,int ratioOverride=-1,bool standardDetector=true)
+Spectrum measure(bool ki, bool compressed=false, bool twoTone=false, float frequency=1000,bool analog=false,float amplitude=-1,int ratioOverride=-1,bool standardDetector=true,int pdaOverride=-1,int hscOverride=-1)
 {
     auto processor=std::make_unique<PWMToneBoyAudioProcessor>();
     set(*processor,"analogMode",analog?1.0f:0.0f);
     set(*processor,"kiMode",ki?1.0f:0.0f); set(*processor,"eqIn",0);
     set(*processor,"ratioIndex",ratioOverride>=0?float(ratioOverride):(compressed?2.0f:0.0f)); set(*processor,"threshold",compressed?-18.0f:0.0f);
     if(!standardDetector) { set(*processor,"pdaMode",0); set(*processor,"kWeightSc",0); set(*processor,"linkAutoGain",0); set(*processor,"decayIndex",0); }
+    if(pdaOverride>=0) set(*processor,"pdaMode",float(pdaOverride));
+    if(hscOverride>=0) set(*processor,"kWeightSc",float(hscOverride));
     const double peak=amplitude>=0?amplitude:(compressed?0.5:0.2);
     processor->prepareToPlay(48000,256);
     juce::AudioBuffer<float> buffer(2,256); juce::MidiBuffer midi;
@@ -160,6 +162,14 @@ int main(int argc,char** argv)
     std::cout<<"Screenshot regression D: 250Hz/0dBFS/2:1/KI-PDA-HSC-off THD="<<screenshotCase.thdDb<<"dB; -6dBFS="<<screenshotMinus6.thdDb<<"dB\n";
     check(screenshotCase.thdDb < -75,"full-scale 250 Hz screenshot setup stays clean in digital D");
     check(screenshotMinus6.thdDb < -100,"250 Hz digital D is transparent below compression knee");
+    for(int pdaState:{0,1}) for(int hscState:{0,1})
+    {
+        const auto digital=measure(false,true,false,1000,false,0.5f,-1,true,pdaState,hscState);
+        check(digital.thdDb < -80,"digital D stays clean with every PDA/H-SC combination under steady compression");
+        const auto digitalKi=measure(true,true,false,1000,false,0.5f,-1,true,pdaState,hscState);
+        check(digitalKi.thdDb < -35 && digitalKi.h2Db>digitalKi.h3Db+18,"D with KI keeps gentle H2 dominant for every PDA/H-SC combination");
+        std::cout<<"D PDA="<<pdaState<<" H-SC="<<hscState<<" THD="<<digital.thdDb<<"dB\n";
+    }
     const float shortRecovery=recovery(false), longRecovery=recovery(true);
     check(longRecovery>shortRecovery+0.5f,"sustained program leaves longer release memory");
     std::cout<<"THD dB: clean="<<clean.thdDb<<", KI="<<coloured.thdDb<<", compressed="<<compressed.thdDb<<", bass50Hz="<<bass.thdDb<<"; KI H2/H3="<<coloured.h2Db<<"/"<<coloured.h3Db<<"; IMD 5+6kHz="<<imdClean.imdDb<<"/"<<imdKi.imdDb<<"; recovery short/long="<<shortRecovery<<"/"<<longRecovery<<" dB\n";
@@ -206,6 +216,30 @@ int main(int argc,char** argv)
     check(quiet.getMagnitude(0,256)==0 && PWMToneBoyAudioProcessor::processAnalogColour(0,1,1,true)==0,"digital D and KI also produce exact silence without noise injection");
     std::cout<<"Analog A: 80Hz gain="<<analog80.gainDb<<"dB, THD="<<analog80.thdDb<<"dB\n";
 
+    auto transferTest=std::make_unique<ToneBoyTransferAnalysis>();
+    auto referenceComplex=std::make_unique<std::array<float,16384>>(), resultComplex=std::make_unique<std::array<float,16384>>();
+    constexpr int testBin=171;
+    const double transferFrequency=double(testBin)*48000/8192;
+    const auto pushTransfer=[&](float gain,float phase)
+    {
+        referenceComplex->fill(0); resultComplex->fill(0);
+        (*referenceComplex)[2*testBin]=400; (*referenceComplex)[2*testBin+1]=200;
+        (*resultComplex)[2*testBin]=gain*(400*std::cos(phase)+200*std::sin(phase));
+        (*resultComplex)[2*testBin+1]=gain*(200*std::cos(phase)-400*std::sin(phase));
+        transferTest->update(*referenceComplex,*resultComplex);
+    };
+    for(int frame=0;frame<5;++frame) pushTransfer(juce::Decibels::decibelsToGain(-3.0f),0.4f);
+    auto observed=transferTest->estimate(transferFrequency,48000);
+    check(observed.confidence>0.9f && std::abs(observed.gainDb+3)<0.001f,"observed A curve recovers known gain despite phase shift");
+    for(int frame=0;frame<20;++frame) pushTransfer(2.0f,0.4f);
+    observed=transferTest->estimate(transferFrequency,48000);
+    check(std::abs(observed.gainDb-6.0206f)<0.1f,"observed curve follows real transfer changes instead of an oscillator");
+    check(transferTest->estimate(3000,48000).confidence==0,"unexcited frequencies are not fabricated as measured response");
+    transferTest->clear(); for(int frame=0;frame<24;++frame) pushTransfer(1.0f,frame%2?0.0f:juce::MathConstants<float>::pi);
+    check(transferTest->estimate(transferFrequency,48000).confidence==0,"incoherent transfer is rejected");
+    referenceComplex->fill(0); resultComplex->fill(0); transferTest->update(*referenceComplex,*resultComplex);
+    check(transferTest->estimate(transferFrequency,48000).confidence==0,"silence cannot produce an observed curve wobble");
+
     // Exercise actual editor rendering at minimum, reference and maximum sizes.
     for(auto* param:restored.getParameters()) param->setValueNotifyingHost(param->getDefaultValue());
     std::unique_ptr<juce::AudioProcessorEditor> editor(restored.createEditor());
@@ -249,8 +283,14 @@ int main(int argc,char** argv)
     check(restored.parameter("analogMode")==1,"A/D selector persists with saved state");
     if(screen && argc>1)
     {
-        juce::AudioBuffer<float> analogSignal(2,256);
-        for(int block=0;block<128;++block) { for(int n=0;n<256;++n) for(int c=0;c<2;++c) analogSignal.setSample(c,n,float(0.2*std::sin(tau*1000.3*(block*256+n)/48000))); restored.processBlock(analogSignal,midi); screen->refreshDiagnostics(); }
+        juce::AudioBuffer<float> analogSignal(2,256); uint32_t stimulus=0xD123FAE;
+        for(int block=0;block<160;++block)
+        {
+            if(block%32==0) juce::Thread::sleep(160);
+            for(int n=0;n<256;++n) { stimulus=stimulus*1664525u+1013904223u; const float value=float(int32_t(stimulus))/2147483648.0f*0.24f+float(0.1*std::sin(tau*250*(block*256+n)/48000)); for(int c=0;c<2;++c) analogSignal.setSample(c,n,value); }
+            restored.processBlock(analogSignal,midi); screen->refreshDiagnostics();
+        }
+        check(screen->getObservedBandCount()>20,"A observes real broadband input/output while D processing remains unchanged");
         for(int click=0;click<5;++click) screen->advanceView();
         auto image=editor->createComponentSnapshot(editor->getLocalBounds()); auto out=juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]).getChildFile("UI-M4-A.png"); juce::FileOutputStream stream(out); stream.setPosition(0); stream.truncate(); juce::PNGImageFormat png; check(png.writeImageToStream(image,stream),"A-mode linear screen snapshot saved");
     }

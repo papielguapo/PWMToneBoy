@@ -1,41 +1,49 @@
 # PWM TONE BOY — PAPIELGUAPO
 
-**v1.2.1 · Compresor estéreo con color analógico, curva viva y análisis de salida.**
+**v1.3.0 · A con respuesta observada; D digital limpio conservado.**
 
 ![PWM TONE BOY](docs/images/PWM-TONE-BOY.png)
 
-- **[Descargar VST3 + Standalone — Windows x64](https://github.com/papielguapo/PWMToneBoy/releases/download/v1.2.1/PWM-TONE-BOY-Windows-x64.zip)**
-- **[Guía completa en español](docs/GUIA-ES.md)**: instalación, cada perilla/botón/clic, seis pantallas y Standalone.
-- [Release v1.2.1](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.2.1)
+- **[Descargar VST3 + Standalone — Windows x64](https://github.com/papielguapo/PWMToneBoy/releases/download/v1.3.0/PWM-TONE-BOY-Windows-x64.zip)**
+- **[Guía completa en español](docs/GUIA-ES.md)**: cada perilla, botón, clic, pantalla e instalación.
+- [Release v1.3.0](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.3.0)
 
-## Qué cambia
+## Qué cambia, solo en A
 
-**D vuelve a ser digital limpio, como en v1.1.0.** Se ha retirado la coloración dinámica añadida por error a D en v1.2.0. KI permanece independiente: al estar activado sigue aportando el segundo armónico sutil de la versión anterior. **A concentra la coloración analógica dinámica**, su contorno y saturación dependientes del nivel y de la memoria de compresión. No hay ruido aleatorio, hiss, hum ni dither.
+Linear Analysis sigue una estimación de la **transferencia real entrada/salida** en A, usando espectros cruzados H1. El movimiento procede de los datos del audio y de su procesamiento: no es un temblor dibujado con un oscilador ni ruido aleatorio.
 
-**Linear Analysis se mueve con el DSP:** la curva brillante incluye filtros, carga dinámica y reducción actual de ganancia. La línea tenue es la referencia sin reducción, no una curva A/B. No se simula movimiento aleatorio. Es un modelo de magnitud del estado actual; no una medición del hardware ni de la distorsión no lineal.
+![A: entrada/salida observada y modelo](docs/images/Analog-A.png)
 
-![Curva viva](docs/images/Linear-Analysis.png)
+La etiqueta **A I/O+MODEL** indica el método. Solo se admiten bandas excitadas y coherentes; las demás conservan el modelo. El estimador usa ventanas de 8192 muestras, suaviza espectros y requiere tres ventanas activas por banda. La información nueva llega aproximadamente hasta seis veces por segundo y la representación se suaviza a 60 Hz. Un seno estable no obliga a que la curva tiemble: no se inventa variación donde no la hay.
 
-**Harmonic Analysis muestra espectro con música:** entrada oscura y salida brillante, FFT de 8192 muestras. Con un seno válido añade marcadores de armónicos, F0, THD y THD+N; con música conserva las curvas y deja las cifras de distorsión en --.
+Esta es una estimación de transferencia con señal de programa, no un barrido lineal de laboratorio ni una medición certificada de un circuito Crane Song. La coherencia, la ventana y la no linealidad limitan la lectura. El DAC de 4 bits y ProSound siguen desactivados.
 
-![Espectro de salida con música](docs/images/Harmonic-Music.png)
-![Análisis con seno](docs/images/Harmonic-Analysis.png)
+## D se mantiene limpio
 
-## Controles y sonido
+**El motor de audio no cambia respecto a v1.2.1.** D conserva la ruta digital restaurada de v1.1.0. KI es independiente y mantiene su segundo armónico sutil; PDA y H-SC actúan sobre la dinámica/detección, sin un nuevo generador de distorsión añadido. Desactivar KI no desactiva el compresor ni los filtros principales.
 
-THRESHOLD: −42 a 0 dB; RATIO: 1/2/3/5/10/20/100; DECAY: 100–3200 ms. EQ IN cambia reconstrucción 11.2/20 kHz; HPF SC filtra el detector a 90 Hz. LINK combina el 85% del control de compresión y enlaza la protección de picos. PAD aplica x0.25. KI añade segundo armónico; PDA acorta el ataque cuando se aproxima una sobrecarga; H-SC combina pico/RMS con preénfasis.
+La nueva respuesta observada no se aplica a la vista D. No se añade ruido, hiss, hum ni dither en ninguno de los modos; cero de entrada desde reposo mantiene cero exacto de salida. Las pruebas cubren PDA/H-SC en todas sus combinaciones, con KI OFF/ON, además de las referencias de D anteriores.
 
-A/D cruza en 40 ms. **D**, inicialmente seleccionado, omite por completo los filtros y la saturación adicionales de la etapa A: la carga analógica no puede alterar su señal. Conserva el compresor, KI según su botón y los filtros principales de v1.1.0. **A** varía aproximadamente entre +0.15/+1 dB a 65 Hz y −0.10/−0.85 dB a 8 kHz. Su carga tiene respuesta de 35 ms y relajación de 650 ms, aumentando también la curvatura H2/H3. Las etapas asimétricas preceden al paso alto de cuarto orden a 18 Hz.
+![D conservado](docs/images/Linear-Analysis.png)
 
-Auto-Gain está siempre activo en la señal procesada: `(-threshold * (1 - 1/ratio)) * 0.54` dB. OUTPUT ajusta −24 a +12 dB después de la protección de picos; ganancias positivas pueden superar 0 dBFS. BYPASS cruza a la señal seca compensada por latencia, sin OUTPUT.
+## Funciones que se conservan
 
-SELECT y la vista DAC/PWM son heredados: DAC y ProSound siguen desactivados incluso al automatizar parámetros antiguos. El editor vectorial conserva su skin, escala de 80–200% y zonas de clic proporcionales. Un clic en la LCD recorre seis vistas. El Standalone incluye bucles internos y reproducción WAV/AIFF.
+- THRESHOLD −42 a 0 dB; RATIO 1/2/3/5/10/20/100; DECAY 100–3200 ms.
+- OUTPUT −24 a +12 dB, después de protección de picos. Auto-Gain siempre activo en la ruta procesada.
+- EQ IN, HPF SC, LINK, BYPASS, PAD, KI, PDA, H-SC y selector A/D. A/D cruza en 40 ms.
+- A aplica el contorno/saturación dependientes del nivel y la memoria existentes en v1.2.1; D omite esa etapa adicional.
+- Seis visores LCD; Harmonic Analysis mantiene espectro con música y solo publica THD/THD+N con seno válido.
+- Editor vectorial reescalable del 80% al 200%, con estado y automatización. Standalone con bucles y WAV/AIFF.
+- SELECT y la vista DAC/PWM son heredados; la cuantización continúa desactivada aunque se automaticen parámetros antiguos.
 
-**Compatibilidad sonora:** se conservan IDs, parámetros, estado y fabricante PAPIELGUAPO. v1.2.1 restaura D a su ruta de v1.1.0 y deja el color dinámico en A. Las mejoras de los seis visores y el espectro con música permanecen. Desactivar KI omite su color propio; D no equivale a BYPASS, porque compresor y filtros siguen activos. La protección de picos puede actuar cerca del techo y OUTPUT positivo puede superar 0 dBFS. Es un diseño original inspirado en comportamiento analógico/STC-8, no una emulación calibrada de Crane Song.
+![Análisis armónico](docs/images/Harmonic-Analysis.png)
+![Espectro con música](docs/images/Harmonic-Music.png)
 
-## Compilación
+Diseño original inspirado en comportamiento analógico/STC-8; no emulación calibrada ni reconstrucción de su circuito. Se conservan fabricante PAPIELGUAPO, IDs, parámetros y latencia de 6 muestras.
 
-C++20, CMake 3.22+, JUCE 8.0.4 descargado mediante FetchContent si no se encuentra JUCE 8 local. En Windows se utiliza Visual Studio con C++/Windows SDK.
+## Compilar y verificar
+
+C++20, CMake 3.22+, JUCE 8.0.4 mediante FetchContent si no se encuentra JUCE 8 local. En Windows, Visual Studio con C++ y Windows SDK.
 
 ```powershell
 cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -43,25 +51,14 @@ cmake --build build --config Release --parallel
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-Artefactos:
-
-- `build/PWMToneBoy_artefacts/Release/VST3/PWM TONE BOY.vst3` (copiar el bundle completo).
+- `build/PWMToneBoy_artefacts/Release/VST3/PWM TONE BOY.vst3` (bundle completo).
 - `build/PWMToneBoy_artefacts/Release/Standalone/PWM TONE BOY.exe`.
 
 ```powershell
 & 'build/PWMToneBoyChecks_artefacts/Release/PWMToneBoyChecks.exe' QA
 ```
 
-La telemetría usa una cola SPSC; FFT y análisis armónico se ejecutan en la interfaz y no reservan buffers en el callback de audio. La latencia sigue siendo de 6 muestras. Los análisis usan el canal 1. La THD se estima con un seno estable y una ventana finita; se ocultan cifras no válidas. M4 estima magnitud con coeficientes y reducción actuales, sin representar fase, armónicos ni rizado de oversampling.
-
-Los ZIP incluyen fuentes o binarios, guía, capturas y registros QA. Las pruebas cubren estado, automatización, silencio, mono/estéreo, bloques variables, diferentes frecuencias, A/D y seis visores. La licencia de JUCE está en `build/_deps/juce-src` tras configurar. La tipografía usa Arial/Arial Black como fallback del diseño vectorial original.
+La estimación y las FFT se ejecutan en la interfaz sobre la cola SPSC existente. No se añaden reservas ni análisis al callback de audio. Los ZIP incluyen guía, fotos y QA. La licencia JUCE se encuentra en `build/_deps/juce-src` tras configurar.
 
 
-**Verificación v1.2.1:** 3.903 comprobaciones automatizadas superadas, incluidas visualización con música y silencio exacto en A y D con KI. pluginval nivel 10 superado (semilla 1472). Se incluyen los registros completos en QA.
-
-
-## Regresión sonora corregida
-
-Se recuperaron las referencias medidas de v1.1.0: con un seno de 1 kHz/0.2 pico, ratio 1:1 y umbral 0 dB, la prueba KI OFF queda por debajo de −100 dB de THD; KI ON vuelve a aproximadamente −62.03 dB (segundo armónico dominante). No son especificaciones garantizadas para todos los ajustes: compresión, filtros, nivel, KI y protección de picos cambian el resultado.
-
-El caso de regresión de 250 Hz/0 dBFS, umbral 0 dB, ratio 2:1, DECAY 100 ms, KI/PDA/H-SC apagados se verificó con THD de aproximadamente −87.84 dB. Son mediciones digitales del ensayo automático, no una reproducción certificada de la configuración completa de una captura externa.
+**Resultado v1.3.0:** 3.917 comprobaciones con cero fallos y pluginval nivel 10 superado (semilla 1472). D con KI apagado mantuvo THD inferior a −121 dB en las cuatro combinaciones PDA/H-SC del ensayo estable de 1 kHz, ratio 3:1 y umbral −18 dB. Con KI encendido se verifica segundo armónico dominante. Son condiciones de prueba concretas, no una garantía universal de THD ni una medida de un STC-8 real. Los archivos del motor de audio no cambian respecto a v1.2.1.

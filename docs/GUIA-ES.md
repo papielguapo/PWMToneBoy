@@ -1,4 +1,4 @@
-# Guía de uso — PWM TONE BOY v1.2.1
+# Guía de uso — PWM TONE BOY v1.3.0
 
 **Creado por PAPIELGUAPO · Windows x64 · VST3 + Standalone**
 
@@ -12,7 +12,7 @@ Es un diseño original inspirado en comportamientos del STC-8. No se ha calibrad
 
 ## Descargar e instalar
 
-1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.2.1](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.2.1).
+1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.2.1](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.3.0).
 2. Descomprime el ZIP. Copia la carpeta completa `VST3/PWM TONE BOY.vst3` a `C:\Program Files\Common Files\VST3`. Cierra los programas que estén usando el plugin antes de sustituirlo. Windows puede solicitar permisos de administrador.
 3. Vuelve a escanear los plugins en tu DAW y carga **PWM TONE BOY**, fabricante **PAPIELGUAPO**.
 4. Para usarlo sin DAW, abre `Standalone/PWM TONE BOY.exe`.
@@ -85,17 +85,23 @@ La interfaz actualiza sus diagnósticos a 60 Hz. Los títulos históricos perman
 | **M2 — STC-8M KNEE+PDR** | A la izquierda, curva estática de compresión según THRESHOLD/RATIO. A la derecha, historial de reducción de ganancia. Las lecturas indican PDA y H-SC activos/inactivos. **PDR:%** representa la memoria interna del programa: una cifra mayor implica mayor contribución de recuperación prolongada. La curva estática no muestra por sí sola el limitador ni la evolución temporal completa. |
 | **M3 — 4BIT DAC+PWM** | Vista de diagnóstico heredada: arriba se dibuja el punto interno de la antigua etapa DAC y abajo un tren PWM ilustrativo. **El DAC y ProSound están desactivados en audio**: no debes esperar escalones de cuantización ni que SELECT cambie el sonido. Las leyendas de DAC/RAW/% pueden reflejar parámetros antiguos conservados por compatibilidad, aunque el DSP los ignore. El tren PWM es una visualización, no una señal adicional enviada al DAW. |
 
-### M4 — LINEAR ANALYSIS, ahora en vivo
+### M4 — LINEAR ANALYSIS: respuesta observada solo en A
 
-![Linear Analysis](images/Linear-Analysis.png)
+![Respuesta real entrada/salida en A](images/Analog-A.png)
 
-La curva brillante sigue **los filtros y la ganancia que está aplicando realmente el DSP**. Incluye la carga dinámica del perfil A, la transición A/D y la reducción instantánea del compresor/protector de picos. Con música, baja y recupera nivel con la compresión; en A también cambia levemente de forma con la actividad de la señal.
+**En A**, la curva brillante combina la estimación observada de entrada/salida con el modelo del DSP. Usa las muestras reales del canal 1, alineadas por la latencia del plugin, y estima la transferencia por espectros cruzados H1: `|Sxy| / Sxx`. Por eso puede variar con el programa, la compresión y la coloración que ya están actuando en el audio. No hay oscilador, ruido, movimiento aleatorio ni animación añadida para hacerla temblar.
 
-La línea tenue es la referencia con los mismos filtros y ajustes de ganancia, pero sin reducción del compresor/limitador. No es una comparación A frente a D ni una curva de bypass. **GR** es la reducción aplicada en ese instante y **LOAD**, visible en A, es el índice de actividad que gobierna su color, no el uso de CPU. Se muestran LIVE A o LIVE D según el selector.
+Se muestra **A I/O+MODEL**. Solo se usa la respuesta observada donde hay excitación suficiente (aproximadamente por encima de −70 dBFS por bin), tres ventanas consecutivas activas y coherencia superior a 0.70. Donde faltan datos fiables se conserva el modelo, en lugar de inventar una medición. Con un único seno, solo las bandas excitadas aportan información real; una señal estable puede producir una curva estable. No se fuerza un temblor permanente.
 
-El eje de frecuencia es logarítmico; el vertical expresa dB. Se incluyen EQ IN, 18 Hz, 52 Hz, el contorno A/D, PAD, Auto-Gain y OUTPUT. Con BYPASS, la curva queda plana a 0 dB.
+Las estimaciones proceden de ventanas de 8192 muestras, actualizadas aproximadamente hasta seis veces por segundo. La transición de la curva se suaviza en la interfaz a 60 Hz para no saltar entre ventanas. Esta suavización no modifica el audio.
 
-Sigue siendo un **modelo de magnitud alrededor del estado de trabajo actual**, no un barrido de laboratorio en directo. No dibuja los armónicos creados por saturación, la fase ni el rizado del oversampling. La señal de audio sí recibe los cambios representados: no se añade una animación artificial para simularlos. Si el host deja de procesar, no se inventa actividad nueva.
+**En D no se aplica esta nueva visualización observada.** Conserva su modelo de respuesta y la reducción de ganancia real, como en v1.2.1. La ruta digital, KI, PDA, H-SC y el resto del motor de audio no se han modificado en v1.3.0.
+
+La línea tenue sigue siendo la referencia del modelo sin reducción de compresor/limitador. No es una comparación A frente a D ni un bypass. **GR** es la reducción actual; **L** en A indica carga del perfil analógico, no CPU. Con BYPASS la respuesta se representa plana a 0 dB y no se mezcla una estimación antigua de la señal procesada.
+
+Es una estimación pasiva de un sistema que puede ser no lineal y variar con el tiempo, **no un barrido de laboratorio ni una medida certificada de hardware**. Las pequeñas irregularidades también dependen de ventana, coherencia y contenido de la señal. No se reinterpretan como prueba de que se haya emulado un circuito concreto. El DAC sigue desactivado; no se han añadido errores de cuantización para conseguir movimiento.
+
+![Vista digital conservada](images/Linear-Analysis.png)
 
 ### M5 — HARMONIC ANALYSIS: espectro siempre visible
 
@@ -161,3 +167,11 @@ En v1.2.1 también se verificaron navegación por seis pantallas, tonos fuera de
 ### Referencia sonora de D restaurada
 
 El ensayo de regresión vuelve a los resultados de v1.1.0 con un seno de 1 kHz a 0.2 pico, ratio 1:1 y umbral 0 dB: KI OFF por debajo de −100 dB de THD y KI ON aproximadamente −62.03 dB, con segundo armónico dominante. Se comprueba además 250 Hz a 0 dBFS, ratio 2:1, umbral 0 dB y KI/PDA/H-SC apagados. Estas cifras corresponden al ensayo automático; no garantizan la misma THD para cualquier nivel o ajuste, especialmente cuando comprime o limita.
+
+
+### Verificación de v1.3.0
+
+El código del motor de audio se conserva respecto a v1.2.1. Se comprueban todas las combinaciones de PDA y H-SC en D, con KI apagado y encendido, junto a los ensayos de transparencia, segundo armónico y silencio existentes. La nueva estimación se valida con ganancias/fases conocidas, cambios reales de transferencia, bandas sin excitación, incoherencia y una entrada de banda ancha real procesada por A. Los registros acompañan a la descarga.
+
+
+**Resultado v1.3.0:** 3.917 comprobaciones con cero fallos y pluginval nivel 10 superado (semilla 1472). D con KI apagado mantuvo THD inferior a −121 dB en las cuatro combinaciones PDA/H-SC del ensayo estable de 1 kHz, ratio 3:1 y umbral −18 dB. Con KI encendido se verifica segundo armónico dominante. Son condiciones de prueba concretas, no una garantía universal de THD ni una medida de un STC-8 real. Los archivos del motor de audio no cambian respecto a v1.2.1.

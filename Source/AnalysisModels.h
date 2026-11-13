@@ -4,6 +4,48 @@
 #include <cmath>
 #include <algorithm>
 
+// H1 cross-spectrum transfer estimate. It is meaningful only in excited,
+// sufficiently coherent bands; missing information is never invented.
+class ToneBoyTransferAnalysis
+{
+public:
+    struct Estimate { float gainDb{}, confidence{}; };
+    void clear() { bins.fill({}); }
+    void update(std::span<const float> input,std::span<const float> output)
+    {
+        if(input.size()<8192 || output.size()<8192) return;
+        constexpr double scale=1.0/2048;
+        for(size_t i=1;i<bins.size();++i)
+        {
+            const double xr=input[2*i]*scale,xi=input[2*i+1]*scale,yr=output[2*i]*scale,yi=output[2*i+1]*scale;
+            const double xx=xr*xr+xi*xi,yy=yr*yr+yi*yi,re=xr*yr+xi*yi,im=xr*yi-xi*yr;
+            auto& b=bins[i];
+            if(!std::isfinite(xx+yy+re+im)) { b={}; continue; }
+            b.active=xx>=1e-7?std::min(255,b.active+1):0;
+            const float a=b.active==1?1.0f:0.28f;
+            b.xx+=a*(float(xx)-b.xx); b.yy+=a*(float(yy)-b.yy);
+            b.re+=a*(float(re)-b.re); b.im+=a*(float(im)-b.im); b.current=float(xx);
+        }
+    }
+    Estimate estimate(double frequency,double rate) const
+    {
+        if(rate<=0 || frequency<20 || frequency>=rate*0.49) return {};
+        const int index=std::clamp(int(std::round(frequency*8192/rate)),1,4095);
+        const auto& b=bins[size_t(index)];
+        if(b.active<3 || b.current<1e-7f || b.xx<1e-12f || b.yy<1e-12f) return {};
+        const double cross=double(b.re)*b.re+double(b.im)*b.im;
+        const double coherence=std::clamp(cross/(double(b.xx)*b.yy),0.0,1.0);
+        if(coherence<0.70) return {};
+        const double gain=10*std::log10(std::max(1e-20,cross/(double(b.xx)*b.xx)));
+        if(!std::isfinite(gain) || gain< -96 || gain>48) return {};
+        const auto excitation=std::clamp((10*std::log10(double(b.current))+70)/25,0.0,1.0);
+        return {float(gain),float(std::clamp((coherence-0.70)/0.25,0.0,1.0)*excitation)};
+    }
+private:
+    struct Bin { float xx{},yy{},re{},im{},current{}; int active{}; };
+    std::array<Bin,4096> bins{};
+};
+
 // Passive analysis only. No test oscillator or processing is inserted in the audio path.
 struct ToneBoyHarmonicResult
 {

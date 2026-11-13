@@ -17,6 +17,7 @@ public:
     void refreshDiagnostics() { timerCallback(); }
     const ToneBoyHarmonicResult& getHarmonicResult() const { return harmonic; }
     float getSpectrumPeakDb() const { return *std::max_element(spectralOutput.begin(),spectralOutput.end()); }
+    int getObservedBandCount() const { return int(std::count_if(observedConfidence.begin(),observedConfidence.end(),[](float value){return value>0.1f;})); }
     void paint(juce::Graphics& g) override
     {
         g.saveState(); g.addTransform(juce::AffineTransform::scale(float(getWidth())/240,float(getHeight())/176));
@@ -86,9 +87,9 @@ private:
             label(g,f>=1000?juce::String(f/1000,0)+"k":juce::String(f,0),juce::roundToInt(x)-5,97,24,9,6.5f);
         }
         juce::Path curve,referenceCurve;
-        for(int i=0;i<=204;++i) { const auto frequency=5*std::pow(maximum/5,double(i)/204); const auto nominal=response(frequency); const auto y=yFor(nominal-reduction),referenceY=yFor(nominal); if(i==0) {curve.startNewSubPath(28,y); referenceCurve.startNewSubPath(28,referenceY);} else {curve.lineTo(float(28+i),y); referenceCurve.lineTo(float(28+i),referenceY);} }
+        for(int i=0;i<=204;++i) { const auto frequency=5*std::pow(maximum/5,double(i)/204); const auto nominal=response(frequency); const auto model=nominal-reduction; const auto confidence=analog && !bypassed?observedConfidence[size_t(i)]:0.0f; const auto observed=model+confidence*(observedGain[size_t(i)]-model); const auto y=yFor(observed),referenceY=yFor(nominal); if(i==0) {curve.startNewSubPath(28,y); referenceCurve.startNewSubPath(28,referenceY);} else {curve.lineTo(float(28+i),y); referenceCurve.lineTo(float(28+i),referenceY);} }
         g.saveState(); g.reduceClipRegion(28,22,205,75); g.setColour(ink.withAlpha(0.45f)); g.strokePath(referenceCurve,juce::PathStrokeType(0.7f)); g.setColour(light); g.strokePath(curve,juce::PathStrokeType(1.6f)); g.restoreState();
-        label(g,juce::String(analog?"LIVE A / GR:":"DIGITAL D / GR:")+juce::String(reduction,1)+"dB"+(analog?" LOAD:"+juce::String(load*100,0)+"%":""),5,108,230,9,7);
+        label(g,juce::String(analog?"A I/O+MODEL GR:":"DIGITAL D / GR:")+juce::String(reduction,1)+"dB"+(analog?" L:"+juce::String(load*100,0)+"%":""),5,108,230,9,7);
     }
     void paintHarmonics(juce::Graphics& g,juce::Colour ink,juce::Colour light)
     {
@@ -161,7 +162,12 @@ private:
         const int count=p.readScope(frames.data(),int(frames.size()));
         const auto rate=p.analysisSampleRate.load();
         const auto overruns=p.scopeOverruns.load();
-        if(rate!=harmonicRate || overruns!=lastOverruns) { harmonicWrite=0; harmonic={}; harmonicRate=rate; lastOverruns=overruns; }
+        const bool analog=p.parameter("analogMode")>0.5f,bypassed=p.parameter("bypass")>0.5f;
+        if(rate!=harmonicRate || overruns!=lastOverruns || analog!=lastAnalog || bypassed!=lastBypass)
+        {
+            harmonicWrite=0; harmonic={}; harmonicRate=rate; lastOverruns=overruns;
+            transfer.clear(); observedConfidence.fill(0); observedGain.fill(0); lastAnalog=analog; lastBypass=bypassed;
+        }
         for(int i=0;i<count;++i)
         {
             wave[size_t(waveWrite)]=frames[size_t(i)]; waveWrite=(waveWrite+1)%1024;
@@ -177,8 +183,9 @@ private:
                     harmonic=ToneBoyHarmonicAnalysis::analyse(harmonicInput,harmonicOutput,rate); lastAnalysisMs=now;
                     detailedInput.fill(0); detailedOutput.fill(0);
                     for(size_t j=0;j<8192;++j) { const auto window=0.5f-0.5f*std::cos(juce::MathConstants<float>::twoPi*float(j)/8191); detailedInput[j]=harmonicInput[j]*window; detailedOutput[j]=harmonicOutput[j]*window; }
-                    detailedFft.performFrequencyOnlyForwardTransform(detailedInput.data()); detailedFft.performFrequencyOnlyForwardTransform(detailedOutput.data());
-                    for(size_t bin=0;bin<4096;++bin) { spectralOutput[bin]=juce::Decibels::gainToDecibels(detailedOutput[bin]/2048,-120.0f); spectralInput[bin]=juce::Decibels::gainToDecibels(detailedInput[bin]/2048,-120.0f); }
+                    detailedFft.performRealOnlyForwardTransform(detailedInput.data()); detailedFft.performRealOnlyForwardTransform(detailedOutput.data());
+                    if(analog && !bypassed) transfer.update(detailedInput,detailedOutput);
+                    for(size_t bin=0;bin<4096;++bin) { spectralOutput[bin]=juce::Decibels::gainToDecibels(std::hypot(detailedOutput[2*bin],detailedOutput[2*bin+1])/2048,-120.0f); spectralInput[bin]=juce::Decibels::gainToDecibels(std::hypot(detailedInput[2*bin],detailedInput[2*bin+1])/2048,-120.0f); }
                 }
             }
             if(fftWrite==1024)
@@ -192,7 +199,15 @@ private:
         if(count==0) for(auto& v:spectrum) v=juce::jmax(-90.0f,v-1.5f);
         if(count==0) { for(auto& v:spectralOutput) v=juce::jmax(-120.0f,v-2); for(auto& v:spectralInput) v=juce::jmax(-120.0f,v-2); }
         if(count>0) lastSignalMs=juce::Time::getMillisecondCounterHiRes();
-        else if(juce::Time::getMillisecondCounterHiRes()-lastSignalMs>500) { harmonic={}; harmonicWrite=0; }
+        else if(juce::Time::getMillisecondCounterHiRes()-lastSignalMs>500) { harmonic={}; harmonicWrite=0; transfer.clear(); }
+        const double maximum=juce::jmin(20000.0,rate*0.45);
+        for(size_t i=0;i<observedGain.size();++i)
+        {
+            const auto estimate=analog && !bypassed?transfer.estimate(5*std::pow(maximum/5,double(i)/204),rate):ToneBoyTransferAnalysis::Estimate{};
+            if(observedConfidence[i]<0.001f) observedGain[i]=estimate.gainDb;
+            else observedGain[i]+=0.20f*(estimate.gainDb-observedGain[i]);
+            observedConfidence[i]+=0.20f*(estimate.confidence-observedConfidence[i]);
+        }
         for(size_t i=0;i<48;++i) peaks[i]=juce::jmax(spectrum[i],peaks[i]-0.45f);
         grHistory[size_t(grWrite)]=p.reductionDb.load(); grWrite=(grWrite+1)%120;
         repaint();
@@ -212,5 +227,8 @@ private:
     double harmonicRate{},lastAnalysisMs{},lastSignalMs{};
     unsigned lastOverruns{};
     int harmonicWrite{};
+    ToneBoyTransferAnalysis transfer;
+    std::array<float,205> observedGain{},observedConfidence{};
+    bool lastAnalog{},lastBypass{};
     int mode{},waveWrite{},fftWrite{},grWrite{};
 };
