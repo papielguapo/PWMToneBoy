@@ -24,7 +24,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout PWMToneBoyAudioProcessor::cr
     for (size_t i=0;i<names.size();++i)
         p.add(std::make_unique<juce::AudioParameterBool>(ID{ids[i+5],1},names[i],defaults[i]));
     p.add(std::make_unique<juce::AudioParameterFloat>(ID{"outputGain",1},"Output (dB)",juce::NormalisableRange<float>(-24,12,0.1f),0.0f));
-    p.add(std::make_unique<juce::AudioParameterBool>(ID{"analogMode",1},"Analog A / Dynamic D",false));
+    p.add(std::make_unique<juce::AudioParameterBool>(ID{"analogMode",1},"Analog A / Digital D",false));
     return p;
 }
 
@@ -73,7 +73,7 @@ void PWMToneBoyAudioProcessor::prepareToPlay(double rate,int block)
         c.infra1.configure(highRate,18,0.54119610f,0);
         c.infra2.configure(highRate,18,1.30656296f,0);
         c.phoenix.configure(highRate,52,0.78f,2,0.85f);
-        const auto profile=analogProfile(controls[15]->load(),0);
+        const auto profile=analogProfile(1,0);
         c.analogLow.configure(highRate,profile.lowHz,0.65f,2,profile.lowDb);
         c.analogHigh.configure(highRate,profile.highHz,0.50f,2,profile.highDb);
     }
@@ -123,7 +123,7 @@ float PWMToneBoyAudioProcessor::processPhoenixSapphireCeiling(float x,float& his
 PWMToneBoyAudioProcessor::AnalogProfile PWMToneBoyAudioProcessor::analogProfile(float modeMix,float load) noexcept
 {
     load=juce::jlimit(0.0f,1.0f,load); modeMix=juce::jlimit(0.0f,1.0f,modeMix);
-    return {mix(0.15f+0.85f*load,0.30f,modeMix),mix(-0.10f-0.75f*load,-0.25f,modeMix),mix(65.0f,80.0f,modeMix),mix(8000.0f,6000.0f,modeMix)};
+    return {modeMix*(0.15f+0.85f*load),modeMix*(-0.10f-0.75f*load),65.0f,8000.0f};
 }
 float PWMToneBoyAudioProcessor::processAnalogColour(float x,float memory,float load,bool dynamic) noexcept
 {
@@ -215,7 +215,7 @@ void PWMToneBoyAudioProcessor::processChunk(juce::AudioBuffer<float>& b,int star
         if(nc==1) gain[1]=gain[0];
         const auto loadTarget=juce::jlimit(0.0f,1.0f,juce::jmax(channels[0].fast,channels[size_t(nc-1)].fast)*1.8f+juce::jmax(channels[0].releaseMemory,channels[size_t(nc-1)].releaseMemory)*0.35f);
         analogLoad=loadTarget+(analogLoad-loadTarget)*(loadTarget>analogLoad?analogAttack:analogRelease);
-        const auto profile=analogProfile(analog,analogLoad);
+        const auto profile=analogProfile(1,analogLoad);
         const auto mean=(gain[0]+gain[1])*0.5f;
         ToneBoyScopeFrame frame;
         float postMakeup[2]{};
@@ -234,7 +234,9 @@ void PWMToneBoyAudioProcessor::processChunk(juce::AudioBuffer<float>& b,int star
             const auto reconstructed=ch.reconstruction.tick(dac);
             if((n&31u)==0u) { ch.analogLow.configure(highRate,profile.lowHz,0.65f,2,profile.lowDb); ch.analogHigh.configure(highRate,profile.highHz,0.50f,2,profile.highDb); }
             const auto analogContour=ch.analogHigh.tick(ch.analogLow.tick(reconstructed));
-            const auto preInfra=mix(processAnalogColour(analogContour,ch.releaseMemory,analogLoad,true),processAnalogColour(analogContour,ch.releaseMemory),analog);
+            // D is the v1.1 digital route: no analog filters or waveshaper. KI is
+            // independent and remains the optional, subtle harmonic stage above.
+            const auto preInfra=mix(reconstructed,processAnalogColour(analogContour,ch.releaseMemory,analogLoad,true),analog);
             // All asymmetric colour precedes the 18 Hz blocker; no DC generated
             // by the optional A stage is left downstream of the infrasound filters.
             const auto infra=ch.infra2.tick(ch.infra1.tick(preInfra));
@@ -312,11 +314,13 @@ double PWMToneBoyAudioProcessor::linearResponseDb(double frequency,double rate,b
     filters[1].configure(internalRate,18,1.30656296f,0);
     filters[2].configure(internalRate,52,0.78f,2,0.85f);
     filters[3].configure(internalRate,eq?11200.0f:20000.0f,0.70710678f,1);
-    const auto profile=analogProfile(modeMix<0?(analog?1.0f:0.0f):modeMix,load);
+    const auto blend=modeMix<0?(analog?1.0f:0.0f):modeMix;
+    const auto profile=analogProfile(1,load);
     filters[4].configure(internalRate,profile.lowHz,0.65f,2,profile.lowDb); filters[5].configure(internalRate,profile.highHz,0.50f,2,profile.highDb);
     const auto z=std::polar(1.0,-juce::MathConstants<double>::twoPi*frequency/internalRate);
-    double magnitude=1;
-    for(const auto& filter:filters) magnitude*=std::abs((filter.b0+filter.b1*z+filter.b2*z*z)/(1.0+filter.a1*z+filter.a2*z*z));
+    double magnitude=1; std::complex<double> analogResponse{1,0};
+    for(size_t i=0;i<filters.size();++i) { const auto& filter=filters[i]; const auto response=(filter.b0+filter.b1*z+filter.b2*z*z)/(1.0+filter.a1*z+filter.a2*z*z); if(i<4) magnitude*=std::abs(response); else analogResponse*=response; }
+    magnitude*=std::abs((1-double(blend))+double(blend)*analogResponse);
     return 20*std::log10(juce::jmax(1e-12,magnitude))+double(-threshold*(1-1/ratio)*0.54f+trim)+(pad?20*std::log10(0.25):0);
 }
 double PWMToneBoyAudioProcessor::linearResponseDb(double frequency) const

@@ -88,7 +88,7 @@ private:
         juce::Path curve,referenceCurve;
         for(int i=0;i<=204;++i) { const auto frequency=5*std::pow(maximum/5,double(i)/204); const auto nominal=response(frequency); const auto y=yFor(nominal-reduction),referenceY=yFor(nominal); if(i==0) {curve.startNewSubPath(28,y); referenceCurve.startNewSubPath(28,referenceY);} else {curve.lineTo(float(28+i),y); referenceCurve.lineTo(float(28+i),referenceY);} }
         g.saveState(); g.reduceClipRegion(28,22,205,75); g.setColour(ink.withAlpha(0.45f)); g.strokePath(referenceCurve,juce::PathStrokeType(0.7f)); g.setColour(light); g.strokePath(curve,juce::PathStrokeType(1.6f)); g.restoreState();
-        label(g,juce::String(analog?"LIVE A":"LIVE D")+" / GR:"+juce::String(reduction,1)+"dB  LOAD:"+juce::String(load*100,0)+"%",5,108,230,9,7);
+        label(g,juce::String(analog?"LIVE A / GR:":"DIGITAL D / GR:")+juce::String(reduction,1)+"dB"+(analog?" LOAD:"+juce::String(load*100,0)+"%":""),5,108,230,9,7);
     }
     void paintHarmonics(juce::Graphics& g,juce::Colour ink,juce::Colour light)
     {

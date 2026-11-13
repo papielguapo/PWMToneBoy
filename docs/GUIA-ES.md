@@ -1,4 +1,4 @@
-# Guía de uso — PWM TONE BOY v1.2.0
+# Guía de uso — PWM TONE BOY v1.2.1
 
 **Creado por PAPIELGUAPO · Windows x64 · VST3 + Standalone**
 
@@ -12,7 +12,7 @@ Es un diseño original inspirado en comportamientos del STC-8. No se ha calibrad
 
 ## Descargar e instalar
 
-1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.2.0](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.2.0).
+1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.2.1](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.2.1).
 2. Descomprime el ZIP. Copia la carpeta completa `VST3/PWM TONE BOY.vst3` a `C:\Program Files\Common Files\VST3`. Cierra los programas que estén usando el plugin antes de sustituirlo. Windows puede solicitar permisos de administrador.
 3. Vuelve a escanear los plugins en tu DAW y carga **PWM TONE BOY**, fabricante **PAPIELGUAPO**.
 4. Para usarlo sin DAW, abre `Standalone/PWM TONE BOY.exe`.
@@ -35,7 +35,7 @@ El ZIP también incluye esta guía, las imágenes de la interfaz y de los nuevos
 | **PWM THRESHOLD** | Fija el umbral del compresor. Al bajarlo, una mayor parte de la señal entra en compresión. La rodilla hace que la transición alrededor del umbral sea gradual. El display inferior muestra dB. | −42 a 0 dB; inicial **−18 dB**. |
 | **B — RATIO** | Define la intensidad de la compresión por encima de la rodilla. 1:1 desactiva la reducción del compresor, pero conserva filtros, KI si está activo, Auto-Gain según su fórmula y protección de picos. INF es una relación interna de 100:1. | **1:1, 2:1, 3:1, 5:1, 10:1, 20:1, INF**; inicial **3:1**. |
 | **A — DECAY** | Ajusta la recuperación base de la dinámica. Valores cortos recuperan antes y largos mantienen más tiempo la reducción. El tiempo real también depende de la memoria de la compresión: no es un cronómetro fijo de vuelta a cero. | **100, 200, 400, 800 ms, 1.6 y 3.2 s**; inicial **200 ms**. |
-| **SELECT** | Control de reloj PWM heredado. Conserva su posición y lectura, pero **no modifica el audio en v1.2.0**, porque sample-and-hold y DAC están desactivados. | 4–250 kHz; inicial **120 kHz**. |
+| **SELECT** | Control de reloj PWM heredado. Conserva su posición y lectura, pero **no modifica el audio en v1.2.1**, porque sample-and-hold y DAC están desactivados. | 4–250 kHz; inicial **120 kHz**. |
 | **OUTPUT** | Sube o baja el nivel procesado después de Auto-Gain y de la protección de picos. No modifica el umbral ni el ratio. Los cambios se suavizan durante 20 ms. Ganancias positivas pueden superar 0 dBFS después de la protección; comprueba el nivel de salida del DAW. En BYPASS se escucha la señal seca, sin OUTPUT. | **−24 a +12 dB**; inicial **0 dB**. |
 
 ## Palancas y botones
@@ -53,18 +53,18 @@ El ZIP también incluye esta guía, las imágenes de la interfaz y de los nuevos
 
 ## Selector horizontal A / D
 
-Está en la antigua placa AUTO-GAIN. Un clic alterna entre **A**, a la izquierda, y **D**, a la derecha. Ambas posiciones colorean ahora el audio: **en v1.2.0, D significa perfil dinámico, no modo limpio/directo**. Este cambio se ha hecho para que D resulte más analógico y perceptible. Los proyectos guardados con D sonarán con ese nuevo perfil al usar v1.2.0; la release v1.1.0 conserva el comportamiento anterior.
+Está en la antigua placa AUTO-GAIN. Un clic alterna entre **A**, a la izquierda, y **D**, a la derecha.
 
-- **A:** perfil analógico suave. Conserva el contorno de aproximadamente +0.30 dB a 80 Hz y −0.25 dB a 6 kHz, junto con saturación suave.
-- **D (valor inicial):** perfil analógico dinámico más marcado. La intensidad depende de la entrada y de la memoria de compresión. El contorno varía desde +0.15 hasta +1 dB alrededor de 65 Hz y desde −0.10 hasta −0.85 dB alrededor de 8 kHz. Los armónicos pares e impares también crecen suavemente con la carga. No hay movimiento aleatorio ni ruido añadido.
-- La carga responde aproximadamente en 35 ms y se relaja en 650 ms. El enlace del perfil entre canales usa la mayor actividad para evitar cambios de color distintos en cada lado. Estos tiempos son decisiones de diseño, no constantes medidas en hardware Crane Song.
-- La conmutación entre A y D cruza durante **40 ms**. Ambos perfiles se pueden combinar con KI y se guardan con el estado del plugin.
-- **No se genera hiss, hum, ruido aleatorio ni dither.** Entrada cero desde reposo produce cero exacto en ambos perfiles, también con KI activo. Las etapas asimétricas preceden al filtro de 18 Hz para retirar DC.
-- A/D no es BYPASS. Para escuchar la señal seca usa BYPASS. Desactivar KI omite su etapa propia de segundo armónico, pero no elimina la coloración de A/D.
+- **D — DIGITAL (valor inicial):** recupera la ruta digital de v1.1.0. Omite completamente los filtros y la saturación adicionales del perfil analógico. La carga de la etapa A no altera el sonido de D.
+- **KI sigue siendo independiente.** En D con KI activado se conserva el segundo armónico sutil de la versión anterior; con KI apagado esa etapa es lineal. D no equivale a bypass: el compresor, los filtros principales, Auto-Gain y la protección de picos siguen funcionando según sus controles.
+- **A — ANALOG:** concentra el color dinámico. El contorno varía de +0.15 a +1 dB alrededor de 65 Hz y de −0.10 a −0.85 dB alrededor de 8 kHz. Los armónicos suaves pares e impares crecen con el nivel y con la memoria de compresión. Puede combinarse con KI.
+- La carga responde en unos 35 ms y se relaja en 650 ms. Su enlace entre canales usa la mayor actividad para evitar diferencias de color entre lados. Son decisiones de diseño, no constantes medidas en hardware Crane Song.
+- La conmutación A/D cruza durante **40 ms** y se guarda con el estado del plugin.
+- **Sin hiss, hum, ruido aleatorio ni dither:** entrada cero desde reposo produce cero exacto en A y D, también con KI activo. Las etapas asimétricas preceden al filtro de 18 Hz para retirar DC.
 
-La coloración y la dinámica son originales e inspiradas en una filosofía analógica/STC-8. No representan una emulación calibrada de un Crane Song concreto.
+**Corrección de v1.2.1:** en v1.2.0 se había añadido color dinámico a D. Se retira esa regresión para recuperar el D anterior y se concentra dicho carácter en A. No cambian los IDs de automatización.
 
-![Perfil A y curva viva](images/Analog-A.png)
+![Modo A y curva viva](images/Analog-A.png)
 
 ## Auto-Gain y protección de picos
 
@@ -89,9 +89,9 @@ La interfaz actualiza sus diagnósticos a 60 Hz. Los títulos históricos perman
 
 ![Linear Analysis](images/Linear-Analysis.png)
 
-La curva brillante sigue **los filtros y la ganancia que está aplicando realmente el DSP**. Incluye la carga dinámica del perfil D, la transición A/D y la reducción instantánea del compresor/protector de picos. Con música, baja y recupera nivel con la compresión; en D también cambia levemente de forma con la actividad de la señal.
+La curva brillante sigue **los filtros y la ganancia que está aplicando realmente el DSP**. Incluye la carga dinámica del perfil A, la transición A/D y la reducción instantánea del compresor/protector de picos. Con música, baja y recupera nivel con la compresión; en A también cambia levemente de forma con la actividad de la señal.
 
-La línea tenue es la referencia con los mismos filtros y ajustes de ganancia, pero sin reducción del compresor/limitador. No es una comparación A frente a D ni una curva de bypass. **GR** es la reducción aplicada en ese instante y **LOAD** es el índice de actividad que gobierna D, no el uso de CPU. Se muestran LIVE A o LIVE D según el selector.
+La línea tenue es la referencia con los mismos filtros y ajustes de ganancia, pero sin reducción del compresor/limitador. No es una comparación A frente a D ni una curva de bypass. **GR** es la reducción aplicada en ese instante y **LOAD**, visible en A, es el índice de actividad que gobierna su color, no el uso de CPU. Se muestran LIVE A o LIVE D según el selector.
 
 El eje de frecuencia es logarítmico; el vertical expresa dB. Se incluyen EQ IN, 18 Hz, 52 Hz, el contorno A/D, PAD, Auto-Gain y OUTPUT. Con BYPASS, la curva queda plana a 0 dB.
 
@@ -152,7 +152,12 @@ Empieza con ratio 3:1 y DECAY 200 ms. Baja THRESHOLD hasta ver unos pocos dB de 
 
 ## Verificación y alcance
 
-La versión binaria v1.2.0 pasó **3.899 comprobaciones automatizadas y pluginval nivel 10**. Se probaron silencio, estado, mono/estéreo, cambios de parámetros, distintas frecuencias de muestreo, bloques de 1–4097 muestras y cuatro tamaños del editor. Los registros se incluyen en QA. Son pruebas de estabilidad y comportamiento del software, no una certificación de equivalencia con hardware.
+La versión binaria v1.2.1 pasó **3.903 comprobaciones automatizadas y pluginval nivel 10**. Se probaron silencio, estado, mono/estéreo, cambios de parámetros, distintas frecuencias de muestreo, bloques de 1–4097 muestras y cuatro tamaños del editor. Los registros se incluyen en QA. Son pruebas de estabilidad y comportamiento del software, no una certificación de equivalencia con hardware.
 
 
-En v1.2.0 también se verificaron navegación por seis pantallas, tonos fuera de bins, rechazo de multitono y silencio, coherencia de THD/THD+N, correspondencia entre curva y filtros medidos, persistencia del selector A/D y silencio exacto con A + KI. La latencia sigue siendo de 6 muestras.
+En v1.2.1 también se verificaron navegación por seis pantallas, tonos fuera de bins, rechazo de multitono y silencio, coherencia de THD/THD+N, correspondencia entre curva y filtros medidos, persistencia del selector A/D y silencio exacto con A + KI. La latencia sigue siendo de 6 muestras.
+
+
+### Referencia sonora de D restaurada
+
+El ensayo de regresión vuelve a los resultados de v1.1.0 con un seno de 1 kHz a 0.2 pico, ratio 1:1 y umbral 0 dB: KI OFF por debajo de −100 dB de THD y KI ON aproximadamente −62.03 dB, con segundo armónico dominante. Se comprueba además 250 Hz a 0 dBFS, ratio 2:1, umbral 0 dB y KI/PDA/H-SC apagados. Estas cifras corresponden al ensayo automático; no garantizan la misma THD para cualquier nivel o ajuste, especialmente cuando comprime o limita.
