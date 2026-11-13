@@ -1,5 +1,21 @@
 # PWM TONE BOY — PAPIELGUAPO
 
+**Compresor estéreo con color KI, recuperación con memoria y OUTPUT independiente.**
+
+![PWM TONE BOY v1.0.1](docs/images/PWM-TONE-BOY.png)
+
+## Descarga y guía de uso
+
+- **[Descargar VST3 + Standalone para Windows x64](https://github.com/papielguapo/PWMToneBoy/releases/download/v1.0.1/PWM-TONE-BOY-Windows-x64.zip)**
+- **[Guía completa en español: perillas, botones, clics, pantallas e instalación](docs/GUIA-ES.md)**
+- [Página de la versión v1.0.1](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.0.1)
+
+Arrastra las perillas para ajustar; doble clic restaura su valor inicial. Pulsa la LCD para alternar sus cuatro visores. OUTPUT sustituye a START/DAC. ProSound y DAC están desactivados. SELECT y M3 se conservan como controles/diagnósticos heredados y no activan cuantización. El editor se puede redimensionar entre el 80% y el 200%.
+
+El ZIP descargable incluye la guía en español y la captura de la interfaz. El binario continúa siendo v1.0.1; esta actualización añade documentación e imagen, sin cambiar el audio.
+
+## Technical documentation
+
 Version 1.0.1. Windows x64 VST3 and Standalone, JUCE 8.0.4 / C++20.
 
 ## Current behavior
