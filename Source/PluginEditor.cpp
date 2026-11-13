@@ -64,6 +64,23 @@ void PWMToneBoyAudioProcessorEditor::resized()
 void PWMToneBoyAudioProcessorEditor::paintPanel(juce::Graphics& g)
 {
     using L=ToneBoyLookAndFeel;
+    if(skin.isNull())
+    {
+        skin=juce::Image(juce::Image::ARGB,840,1360,true);
+        juce::Graphics artwork(skin); artwork.addTransform(juce::AffineTransform::scale(2.0f));
+        paintStaticPanel(artwork);
+    }
+    g.drawImage(skin,0,0,420,680,0,0,840,1360);
+    g.setColour(juce::Colour(p.parameter("bypass")>0.5f?0xff54323a:0xfffa3445)); g.fillEllipse(64,170,8,8);
+    if(p.parameter("bypass")<0.5f) { g.setColour(juce::Colour(0xfffa7482)); g.fillEllipse(65,171,3,2); }
+    L::text(g,juce::String(p.parameter("threshold"),1)+" dB",{66,475,78,20},12,juce::Colour(0xff30323c));
+    const auto* rp=p.apvts.getParameter("ratioIndex"); const auto* dp=p.apvts.getParameter("decayIndex");
+    L::text(g,rp->getCurrentValueAsText(),{223,470,68,15},10); L::text(g,dp->getCurrentValueAsText(),{299,428,68,15},10);
+    L::text(g,juce::String(p.parameter("clockRate"),1)+"k",{153,554,62,13},9); L::text(g,juce::String(p.parameter("outputGain"),1)+"dB",{213,554,52,13},9);
+}
+void PWMToneBoyAudioProcessorEditor::paintStaticPanel(juce::Graphics& g)
+{
+    using L=ToneBoyLookAndFeel;
     g.fillAll(juce::Colour(0xff34353c));
     g.setGradientFill(juce::ColourGradient(juce::Colour(0xff62636b),0,0,juce::Colour(0xff292b30),420,680,false)); g.fillRoundedRectangle(4,4,412,672,5);
     for(int y=9;y<675;y+=3) { g.setColour(juce::Colours::white.withAlpha(0.018f)); g.drawHorizontalLine(y,7,413); }
@@ -83,28 +100,30 @@ void PWMToneBoyAudioProcessorEditor::paintPanel(juce::Graphics& g)
     for(int i=0;i<2;++i) { g.setColour(i==0?juce::Colour(0xff7a2148):L::navy()); g.fillRect(63,89+i*4,58,2); g.fillRect(300,89+i*4,56,2); }
     L::text(g,"DOT MATRIX / STEREO SOUND",{124,85,172,14},7,juce::Colour(0xffd6d2d8));
     g.setColour(juce::Colour(0xff383e26)); g.fillRect(94,109,248,184);
-    g.setColour(juce::Colour(p.parameter("bypass")>0.5f?0xff54323a:0xfffa3445)); g.fillEllipse(64,170,8,8);
-    if(p.parameter("bypass")<0.5f) { g.setColour(juce::Colour(0xfffa7482)); g.fillEllipse(65,171,3,2); }
     L::text(g,"BATTERY",{54,182,34,9},5.5f,juce::Colour(0xffe3dee4));
     L::text(g,"CLICK LCD TO CHANGE VIEW",{110,296,215,10},6,juce::Colour(0xffd6d2d8));
-    g.setColour(L::navy()); g.setFont(juce::Font(juce::FontOptions("Arial Black",22,juce::Font::bold))); g.drawText("PWM",53,326,72,27,juce::Justification::centredLeft);
-    g.setFont(juce::Font(juce::FontOptions("Arial",24,juce::Font::bold|juce::Font::italic))); g.drawText("TONE BOY",126,326,190,27,juce::Justification::centredLeft);
+    g.setColour(L::navy()); g.setFont(juce::Font(juce::FontOptions("Arial Black",32,juce::Font::bold))); g.drawText("PWM",53,323,90,34,juce::Justification::centredLeft);
+    g.setFont(juce::Font(juce::FontOptions("Arial",24,juce::Font::bold|juce::Font::italic))); g.drawText("TONE BOY",123,326,190,27,juce::Justification::centredLeft);
     L::text(g,"PWM THRESHOLD",{44,355,120,12},9);
-    g.setColour(juce::Colour(0xffa6a59f)); g.fillRoundedRectangle(66,475,78,20,3); L::text(g,juce::String(p.parameter("threshold"),1)+" dB",{66,475,78,20},12,juce::Colour(0xff30323c));
+    g.setColour(juce::Colour(0xffa6a59f)); g.fillRoundedRectangle(66,475,78,20,3);
     L::text(g,juce::String::fromUTF8("A — DECAY"),{294,350,80,11},8); L::text(g,juce::String::fromUTF8("B — RATIO"),{216,391,80,11},8);
-    const auto* rp=p.apvts.getParameter("ratioIndex"); const auto* dp=p.apvts.getParameter("decayIndex");
-    L::text(g,rp->getCurrentValueAsText(),{223,470,68,15},10); L::text(g,dp->getCurrentValueAsText(),{299,428,68,15},10);
     L::text(g,"EQ IN",{43,497,44,12},8); L::text(g,"HPF SC",{89,497,44,12},8);
     L::text(g,"11.2kHz",{42,551,46,10},7); L::text(g,"90Hz",{89,551,44,10},7);
     g.saveState(); g.addTransform(juce::AffineTransform::rotation(-0.20944f,184,499)); L::text(g,"SELECT",{160,491,50,12},8); g.restoreState();
     g.saveState(); g.addTransform(juce::AffineTransform::rotation(-0.20944f,238,499)); L::text(g,"OUTPUT",{214,491,48,12},8); g.restoreState();
-    L::text(g,juce::String(p.parameter("clockRate"),1)+"k",{153,554,62,13},9); L::text(g,juce::String(p.parameter("outputGain"),1)+"dB",{213,554,52,13},9);
+
     const juce::String names[]{"LINK","BYPASS","PAD","KI","PDA","H-SC"};
     for(int i=0;i<6;++i) L::text(g,names[i],{float(270+(i%3)*35),float(i<3?493:541),36,12},7);
     g.setColour(juce::Colour(0xffb6b4ad)); g.fillRoundedRectangle(138,592,111,29,5); g.setColour(juce::Colour(0xffdfddd6)); g.drawRoundedRectangle(138,592,111,29,5,0.7f);
     for(int i=0;i<6;++i) { juce::Path slot; slot.addRoundedRectangle(0,0,5,43,2.5f); const auto t=juce::AffineTransform::rotation(-0.488692f).translated(float(291+i*12),581.0f-float(i)*2); g.setColour(juce::Colour(0xff77767c)); g.fillPath(slot,t); g.setColour(juce::Colour(0xffeceae2).withAlpha(0.5f)); g.strokePath(slot,juce::PathStrokeType(0.6f),t); }
 }
-void PWMToneBoyAudioProcessorEditor::timerCallback() { panel.repaint(); }
+void PWMToneBoyAudioProcessorEditor::timerCallback()
+{
+    // Controls and LCD repaint themselves. Only invalidate changed numeric readouts.
+    const std::array<const char*,6> ids{"threshold","ratioIndex","decayIndex","clockRate","outputGain","bypass"};
+    const std::array<juce::Rectangle<int>,6> areas{{{66,475,78,20},{223,470,68,15},{299,428,68,15},{153,554,62,13},{213,554,52,13},{63,169,11,11}}};
+    for(size_t i=0;i<ids.size();++i) { const auto value=p.parameter(ids[i]); if(value!=lastReadouts[i]) { lastReadouts[i]=value; panel.repaint(areas[i]); } }
+}
 void PWMToneBoyAudioProcessorEditor::chooseFile()
 {
     chooser=std::make_unique<juce::FileChooser>("Load WAV or AIFF",juce::File{},"*.wav;*.aiff;*.aif");

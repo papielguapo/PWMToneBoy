@@ -19,6 +19,9 @@ private:
     private: PWMToneBoyAudioProcessorEditor& editor;
     };
     void paintPanel(juce::Graphics&);
+    void paintStaticPanel(juce::Graphics&);
+    juce::Image skin;
+    std::array<float,6> lastReadouts{-999,-999,-999,-999,-999,-999};
     void timerCallback() override;
     void chooseFile();
     void setupKnob(juce::Slider&,const char*,bool,juce::Rectangle<int>,const juce::String&);

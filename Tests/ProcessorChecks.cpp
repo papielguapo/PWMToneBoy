@@ -261,6 +261,14 @@ int main(int argc,char** argv)
     check(std::abs(analysis.thdDb+59.9568)<1,"harmonic THD matches known synthetic reference");
     std::cout<<"Harmonic reference f0="<<analysis.frequency<<" THD="<<analysis.thdDb<<" THD+N="<<analysis.thdnDb<<"\n";
     check(std::abs(analysis.thdnDb-analysis.thdDb)<1,"noise-free THD+N agrees with known harmonic distortion");
+    {
+        auto worker=std::make_unique<ToneBoyHarmonicWorker>(); ToneBoyHarmonicResult asynchronous;
+        check(worker->submit(*testInput,*testOutput,48000,1),"harmonic worker accepts frame without waiting for analysis");
+        worker->waitForDiagnostic(); check(worker->take(asynchronous,1),"harmonic worker publishes completed frame");
+        check(asynchronous.status==analysis.status && std::abs(asynchronous.thdDb-analysis.thdDb)<1e-9 && std::abs(asynchronous.frequency-analysis.frequency)<1e-9,"worker matches harmonic reference without changing analysis maths");
+        check(worker->submit(*testInput,*testOutput,48000,2),"harmonic worker accepts subsequent frame"); worker->waitForDiagnostic();
+        check(!worker->take(asynchronous,3),"stale harmonic frame rejected after rate or mode reset");
+    }
     for(int n=0;n<8192;++n) (*testOutput)[size_t(n)]+=float(0.001*std::sin(tau*6000*n/48000));
     analysis=ToneBoyHarmonicAnalysis::analyse(*testInput,*testOutput,48000);
     check(analysis.thdnDb>analysis.thdDb+8,"THD+N includes nonharmonic residual energy");
@@ -364,6 +372,19 @@ int main(int argc,char** argv)
         check(hit!=nullptr && hit->getName()=="PWM Threshold","scaled threshold hit target matches drawing");
         auto image=editor->createComponentSnapshot(editor->getLocalBounds()); check(image.isValid(),"resized editor snapshot");
         if(argc>1) { juce::File out=juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]).getChildFile("UI-"+juce::String(w)+".png"); out.getParentDirectory().createDirectory(); juce::FileOutputStream stream(out); stream.setPosition(0); stream.truncate(); juce::PNGImageFormat png; png.writeImageToStream(image,stream); }
+    }
+    {
+        editor->setSize(420,680); std::array<double,20> durations{};
+        for(size_t frame=0;frame<durations.size();++frame)
+        {
+            set(restored,"threshold",-30+float(frame));
+            const auto start=juce::Time::getMillisecondCounterHiRes(); auto snapshot=editor->createComponentSnapshot(editor->getLocalBounds());
+            durations[frame]=juce::Time::getMillisecondCounterHiRes()-start;
+            check(snapshot.isValid(),"cached skin redraw supports continuously changing controls");
+        }
+        std::sort(durations.begin(),durations.end());
+        std::cout<<"UI full snapshot at 420px median="<<durations[10]<<" ms max="<<durations.back()<<" ms (offline, not host input latency)\n";
+        set(restored,"threshold",-18);
     }
     std::function<DotMatrixLCDComponent*(juce::Component*)> findLcd=[&](juce::Component* component)->DotMatrixLCDComponent* { if(auto* screen=dynamic_cast<DotMatrixLCDComponent*>(component)) return screen; for(auto* child:component->getChildren()) if(auto* screen=findLcd(child)) return screen; return nullptr; };
     auto* screen=findLcd(editor.get()); check(screen!=nullptr,"editor contains its diagnostic LCD");

@@ -2,6 +2,7 @@
 #include "PluginProcessor.h"
 #include "ToneBoyLookAndFeel.h"
 #include "AnalysisModels.h"
+#include "HarmonicAnalysisWorker.h"
 
 class DotMatrixLCDComponent final : public juce::Component, private juce::Timer
 {
@@ -9,12 +10,12 @@ public:
     explicit DotMatrixLCDComponent(PWMToneBoyAudioProcessor& processor):p(processor),fft(10),detailedFft(13)
     {
         setTitle("LCD diagnostics"); setDescription("Click to cycle six views, including linear and harmonic analysis");
-        setMouseCursor(juce::MouseCursor::PointingHandCursor); startTimerHz(60);
+        setMouseCursor(juce::MouseCursor::PointingHandCursor); startTimerHz(30);
     }
     void mouseDown(const juce::MouseEvent&) override { advanceView(); }
     void advanceView() { mode=(mode+1)%6; repaint(); }
     int getMode() const { return mode; }
-    void refreshDiagnostics() { timerCallback(); }
+    void refreshDiagnostics() { diagnosticRefresh=true; timerCallback(); diagnosticRefresh=false; }
     const ToneBoyHarmonicResult& getHarmonicResult() const { return harmonic; }
     float getSpectrumPeakDb() const { return *std::max_element(spectralOutput.begin(),spectralOutput.end()); }
     int getObservedBandCount() const { return int(std::count_if(observedConfidence.begin(),observedConfidence.end(),[](float value){return value>0.1f;})); }
@@ -23,7 +24,12 @@ public:
         g.saveState(); g.addTransform(juce::AffineTransform::scale(float(getWidth())/240,float(getHeight())/176));
         const auto ink=juce::Colour(0xff27381f),light=juce::Colour(0xffd3e680);
         g.fillAll(juce::Colour(0xff9cae66));
-        for(int x=2;x<240;x+=3) for(int y=2;y<176;y+=3) { g.setColour(ink.withAlpha(0.035f)); g.fillRect(x,y,2,2); }
+        if(dotTexture.isNull())
+        {
+            dotTexture=juce::Image(juce::Image::ARGB,480,352,true); juce::Graphics dots(dotTexture); dots.addTransform(juce::AffineTransform::scale(2.0f)); dots.setColour(ink.withAlpha(0.035f));
+            for(int x=2;x<240;x+=3) for(int y=2;y<176;y+=3) dots.fillRect(x,y,2,2);
+        }
+        g.drawImage(dotTexture,0,0,240,176,0,0,480,352);
         const juce::String titles[]{"M0: FFT SPECTRUM","M1: KI TRIODE+18Hz","M2: STC-8M KNEE+PDR","M3: 4BIT DAC+PWM","M4: LINEAR ANALYSIS","M5: HARMONIC ANALYSIS"};
         label(g,titles[mode],5,3,230,10,8.5f); g.setColour(ink.withAlpha(0.7f)); g.drawHorizontalLine(16,5,235);
         if(mode==0)
@@ -166,7 +172,7 @@ private:
         const bool analog=p.parameter("analogMode")>0.5f,bypassed=p.parameter("bypass")>0.5f;
         if(rate!=harmonicRate || overruns!=lastOverruns || analog!=lastAnalog || bypassed!=lastBypass)
         {
-            harmonicWrite=0; harmonic={}; harmonicRate=rate; lastOverruns=overruns;
+            ++analysisEpoch; harmonicWrite=0; harmonic={}; harmonicRate=rate; lastOverruns=overruns;
             transfer.clear(); observedConfidence.fill(0); observedGain.fill(0); lastAnalog=analog; lastBypass=bypassed;
         }
         for(int i=0;i<count;++i)
@@ -181,7 +187,9 @@ private:
                 const auto now=juce::Time::getMillisecondCounterHiRes();
                 if(now-lastAnalysisMs>=150)
                 {
-                    harmonic=ToneBoyHarmonicAnalysis::analyse(harmonicInput,harmonicOutput,rate); lastAnalysisMs=now;
+                    const bool submitted=harmonicWorker.submit(harmonicInput,harmonicOutput,rate,analysisEpoch);
+                    if(diagnosticRefresh && submitted) harmonicWorker.waitForDiagnostic();
+                    lastAnalysisMs=now;
                     detailedInput.fill(0); detailedOutput.fill(0);
                     for(size_t j=0;j<8192;++j) { const auto window=0.5f-0.5f*std::cos(juce::MathConstants<float>::twoPi*float(j)/8191); detailedInput[j]=harmonicInput[j]*window; detailedOutput[j]=harmonicOutput[j]*window; }
                     detailedFft.performRealOnlyForwardTransform(detailedInput.data()); detailedFft.performRealOnlyForwardTransform(detailedOutput.data());
@@ -197,6 +205,7 @@ private:
                 for(int bar=0;bar<48;++bar) { const auto hz=30*std::pow(20000.0/30,double(bar)/47); const int bin=juce::jlimit(1,511,int(hz*1024/rate)); spectrum[size_t(bar)]=juce::Decibels::gainToDecibels(fftData[size_t(bin)]/256,-90.0f); }
             }
         }
+        harmonicWorker.take(harmonic,analysisEpoch);
         if(count==0) for(auto& v:spectrum) v=juce::jmax(-90.0f,v-1.5f);
         if(count==0) { for(auto& v:spectralOutput) v=juce::jmax(-120.0f,v-2); for(auto& v:spectralInput) v=juce::jmax(-120.0f,v-2); }
         if(count>0) lastSignalMs=juce::Time::getMillisecondCounterHiRes();
@@ -213,6 +222,10 @@ private:
         grHistory[size_t(grWrite)]=p.reductionDb.load(); grWrite=(grWrite+1)%120;
         repaint();
     }
+    juce::Image dotTexture;
+    ToneBoyHarmonicWorker harmonicWorker;
+    uint64_t analysisEpoch{};
+    bool diagnosticRefresh{};
     PWMToneBoyAudioProcessor& p;
     juce::dsp::FFT fft;
     std::array<float,2048> fftData{};

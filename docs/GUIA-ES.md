@@ -1,4 +1,4 @@
-# Guía de uso — PWM TONE BOY v1.5.0
+# Guía de uso — PWM TONE BOY v1.5.1
 
 **Creado por PAPIELGUAPO · Windows x64 · VST3 + Standalone**
 
@@ -12,7 +12,7 @@ Es un diseño original inspirado en comportamientos del STC-8. No se ha calibrad
 
 ## Descargar e instalar
 
-1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.5.0](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.5.0).
+1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.5.1](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.5.1).
 2. Descomprime el ZIP. Copia la carpeta completa `VST3/PWM TONE BOY.vst3` a `C:\Program Files\Common Files\VST3`. Cierra los programas que estén usando el plugin antes de sustituirlo. Windows puede solicitar permisos de administrador.
 3. Vuelve a escanear los plugins en tu DAW y carga **PWM TONE BOY**, fabricante **PAPIELGUAPO**.
 4. Para usarlo sin DAW, abre `Standalone/PWM TONE BOY.exe`.
@@ -212,3 +212,13 @@ El código del motor de audio se conserva respecto a v1.2.1. Se comprueban todas
 | UP 1.4:1 | 0.01 | +4.779 dB |
 
 Se comprobaron el lado correcto del umbral, la ganancia máxima estática, silencio exacto desde reposo, audio finito al cambiar modos y guardado/restauración de cada posición. En el LCD, G+ indica realce; GR indica reducción. El historial representa la magnitud de la acción dinámica.
+
+## Fluidez de la interfaz (v1.5.1)
+
+El ajuste armónico de las ventanas de 8192 muestras se ejecuta en un hilo de fondo perteneciente al editor. La interfaz entrega y recoge resultados sin esperar al cálculo; al cerrar el editor se termina ese hilo. Los resultados anteriores a un cambio de frecuencia de muestreo o A/D se descartan.
+
+El dibujo fijo de la skin y la textura de puntos se guardan en imágenes a doble resolución lógica. El panel ya no se repinta entero periódicamente; los controles se repintan a sí mismos y solo se invalidan las lecturas que cambian. La LCD se refresca a 30 Hz. El sonido, el suavizado de parámetros, la latencia de audio y las posiciones de RATIO no cambian respecto a v1.5.0.
+
+PWM pasa de 22 a 32 puntos y se acerca visualmente a TONE BOY. Se mantiene el resto del diseño. Estas optimizaciones reducen trabajo en el hilo que atiende el ratón; la fluidez final también depende de la carga del host y del sistema.
+
+Validación v1.5.1: 4.688 aserciones sin fallos. Se comparó el resultado del analizador en segundo plano con la referencia síncrona y se comprobó el descarte de resultados antiguos; además se renderizaron seis vistas y cuatro tamaños de editor. Las mediciones de audio anteriores permanecen iguales. El tiempo de captura de la interfaz se registra en QA/regression.txt: es una medición offline, no una medida de latencia del ratón en FL Studio.
