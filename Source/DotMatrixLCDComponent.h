@@ -51,7 +51,7 @@ public:
         {
             g.setColour(ink.withAlpha(0.3f)); g.drawRect(6,23,96,74); g.drawLine(6,97,102,23,0.5f);
             juce::Path curve;
-            const auto r=PWMToneBoyAudioProcessor::ratios[size_t(juce::jlimit(0,10,int(p.parameter("ratioIndex"))))];
+            const auto r=p.currentRatio();
             for(int i=0;i<96;++i) { const auto in=-48+float(i)*0.5f; const auto gain=PWMToneBoyAudioProcessor::computeSCurveGainLin(juce::Decibels::decibelsToGain(in),p.parameter("threshold"),r); const auto out=in+juce::Decibels::gainToDecibels(gain); const auto y=97-(out+48)*74/48; if(i==0) curve.startNewSubPath(6,y); else curve.lineTo(float(6+i),y); }
             g.setColour(light); g.strokePath(curve,juce::PathStrokeType(1.5f));
             juce::Path history; for(int i=0;i<120;++i) { const auto y=27+juce::jlimit(0.0f,65.0f,std::abs(grHistory[size_t((grWrite+i)%120)])*2); if(i==0) history.startNewSubPath(112,y); else history.lineTo(float(112+i),y); }
@@ -72,7 +72,7 @@ private:
         const auto rate=p.analysisSampleRate.load();
         const bool eq=p.parameter("eqIn")>0.5f,pad=p.parameter("pad")>0.5f,bypassed=p.parameter("bypass")>0.5f,analog=p.parameter("analogMode")>0.5f;
         const auto threshold=p.parameter("threshold"),trim=p.parameter("outputGain");
-        const auto ratio=PWMToneBoyAudioProcessor::ratios[size_t(juce::jlimit(0,10,int(p.parameter("ratioIndex"))))];
+        const auto ratio=p.currentRatio();
         const auto load=p.analysisAnalogLoad.load(),modeMix=p.analysisAnalogMix.load();
         const auto profile=p.analogProfileSnapshot(); const auto analogGain=p.analysisAGain.load();
         const auto reduction=bypassed?0.0f:p.analysisGainReduction.load();

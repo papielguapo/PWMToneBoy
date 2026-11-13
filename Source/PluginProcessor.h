@@ -33,6 +33,8 @@ public:
     juce::AudioProcessorParameter* getBypassParameter() const override;
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     // Ratios < 1 encode upward expansion; negative ratios encode upward compression.
+    float currentRatio() const noexcept;
+    float currentReleaseMs() const noexcept { return releaseControl->load(); }
     static float computeSCurveGainLin(float envelope, float threshold, float ratio) noexcept;
     static float processCraneTriodeEven(float x, float slow, float k2, float grid) noexcept;
     static float processPhoenixSapphireCeiling(float x, float& history) noexcept;
@@ -84,6 +86,7 @@ private:
     juce::AudioBuffer<float> scratch;
     std::vector<ToneBoyScopeFrame> scopeScratch;
     std::array<std::atomic<float>*,16> controls{};
+    std::atomic<float>* compRatioControl{},*expRatioControl{},*upRatioControl{},*releaseControl{},*modeControl{};
     juce::SmoothedValue<float> analogSmooth;
     float analogLoad{},analogAttack{},analogRelease{};
     double analogPhase1{},analogPhase2{};

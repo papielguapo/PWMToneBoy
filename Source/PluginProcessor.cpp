@@ -16,8 +16,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout PWMToneBoyAudioProcessor::cr
     using ID=juce::ParameterID;
     juce::AudioProcessorValueTreeState::ParameterLayout p;
     p.add(std::make_unique<juce::AudioParameterFloat>(ID{"threshold",1},"PWM Threshold",juce::NormalisableRange<float>(-42,0,0.1f),-18.0f));
-    p.add(std::make_unique<juce::AudioParameterChoice>(ID{"ratioIndex",1},"Ratio",juce::StringArray{"1.0:1","2.0:1","3.0:1","5.0:1","10.0:1","20.0:1","INF","EXP 1:1.3","EXP 1:1.4","UP 1.3:1","UP 1.4:1"},2));
-    p.add(std::make_unique<juce::AudioParameterChoice>(ID{"decayIndex",1},"Decay",juce::StringArray{"100ms","200ms","400ms","800ms","1.6s","3.2s"},1));
+    p.add(std::make_unique<juce::AudioParameterChoice>(ID{"ratioIndex",1},"Legacy stepped ratio (inactive)",juce::StringArray{"1.0:1","2.0:1","3.0:1","5.0:1","10.0:1","20.0:1","INF","EXP 1:1.3","EXP 1:1.4","UP 1.3:1","UP 1.4:1"},2));
+    p.add(std::make_unique<juce::AudioParameterChoice>(ID{"decayIndex",1},"Legacy stepped decay (inactive)",juce::StringArray{"100ms","200ms","400ms","800ms","1.6s","3.2s"},1));
     p.add(std::make_unique<juce::AudioParameterFloat>(ID{"clockRate",1},"PWM Clock (kHz)",juce::NormalisableRange<float>(4,250,0.1f,0.55f),120.0f));
     p.add(std::make_unique<juce::AudioParameterFloat>(ID{"dacCrush",1},"DAC Crush (%)",juce::NormalisableRange<float>(0,100,0.1f),0.0f));
     const std::array<const char*,9> names{"Reconstruction EQ","Sidechain HPF","Stereo Link","Bypass","Input Pad","KI Harmonics","Program Dependent Attack","Hybrid Sidechain","Phones ProSound 4B"};
@@ -26,6 +26,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout PWMToneBoyAudioProcessor::cr
         p.add(std::make_unique<juce::AudioParameterBool>(ID{ids[i+5],1},names[i],defaults[i]));
     p.add(std::make_unique<juce::AudioParameterFloat>(ID{"outputGain",1},"Output (dB)",juce::NormalisableRange<float>(-24,12,0.1f),0.0f));
     p.add(std::make_unique<juce::AudioParameterBool>(ID{"analogMode",1},"Analog A / Digital D",false));
+    p.add(std::make_unique<juce::AudioParameterFloat>(ID{"compressRatio",1},"Compression ratio",juce::NormalisableRange<float>(1,100,0,0.40f),3.0f));
+    p.add(std::make_unique<juce::AudioParameterFloat>(ID{"expandRatio",1},"Expansion ratio",juce::NormalisableRange<float>(1,4,0),1.3f));
+    p.add(std::make_unique<juce::AudioParameterFloat>(ID{"upwardRatio",1},"Upward ratio",juce::NormalisableRange<float>(1,4,0),1.3f));
+    p.add(std::make_unique<juce::AudioParameterFloat>(ID{"releaseMs",1},"Release (ms)",juce::NormalisableRange<float>(50,3200,0,0.40f),200.0f));
+    p.add(std::make_unique<juce::AudioParameterChoice>(ID{"dynamicsMode",1},"Dynamics mode",juce::StringArray{"COMP","EXP","UP"},0));
     return p;
 }
 
@@ -34,6 +39,8 @@ PWMToneBoyAudioProcessor::PWMToneBoyAudioProcessor()
    apvts(*this,nullptr,"PWMToneBoyState",createLayout())
 {
     for(size_t i=0;i<ids.size();++i) controls[i]=apvts.getRawParameterValue(ids[i]);
+    compRatioControl=apvts.getRawParameterValue("compressRatio"); expRatioControl=apvts.getRawParameterValue("expandRatio");
+    upRatioControl=apvts.getRawParameterValue("upwardRatio"); releaseControl=apvts.getRawParameterValue("releaseMs"); modeControl=apvts.getRawParameterValue("dynamicsMode");
     formatManager.registerBasicFormats();
 }
 PWMToneBoyAudioProcessor::~PWMToneBoyAudioProcessor() { fileTransport.setSource(nullptr); }
@@ -82,8 +89,8 @@ void PWMToneBoyAudioProcessor::prepareToPlay(double rate,int block)
     }
     auto init=[this](auto& s,float v){ s.reset(highRate,0.02); s.setCurrentAndTargetValue(v); };
     analogSmooth.reset(highRate,0.04); analogSmooth.setCurrentAndTargetValue(controls[15]->load());
-    init(thresholdSmooth,parameter("threshold")); init(ratioSmooth,ratios[size_t(juce::jlimit(0,10,int(parameter("ratioIndex"))))]);
-    init(decaySmooth,decays[size_t(juce::jlimit(0,5,int(parameter("decayIndex"))))]); init(clockSmooth,parameter("clockRate")); init(crushSmooth,0.0f);
+    init(thresholdSmooth,parameter("threshold")); init(ratioSmooth,currentRatio());
+    init(decaySmooth,currentReleaseMs()); init(clockSmooth,parameter("clockRate")); init(crushSmooth,0.0f);
     init(padSmooth,parameter("pad")>0.5f?0.25f:1); init(bypassSmooth,parameter("bypass"));
     init(eqSmooth,parameter("eqIn")); init(hpfSmooth,parameter("hpfIn")); init(linkSmooth,parameter("linkAutoGain"));
     init(kiSmooth,parameter("kiMode")); init(pdaSmooth,parameter("pdaMode")); init(weightSmooth,parameter("kWeightSc")); init(rawSmooth,0.0f); outputSmooth.reset(sampleRate,0.02); outputSmooth.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(controls[14]->load()));
@@ -105,6 +112,13 @@ void PWMToneBoyAudioProcessor::reset()
     // The SPSC diagnostic queue is intentionally not reset while an editor can consume it.
 }
 void PWMToneBoyAudioProcessor::releaseResources() { fileTransport.releaseResources(); }
+float PWMToneBoyAudioProcessor::currentRatio() const noexcept
+{
+    const int mode=juce::jlimit(0,2,int(modeControl->load()));
+    if(mode==1) return 1.0f/expRatioControl->load();
+    if(mode==2) return -upRatioControl->load();
+    return compRatioControl->load();
+}
 float PWMToneBoyAudioProcessor::computeSCurveGainLin(float env,float threshold,float ratio) noexcept
 {
     if(ratio<1)
@@ -189,11 +203,11 @@ void PWMToneBoyAudioProcessor::process(juce::AudioBuffer<float>& b,bool hostBypa
         else if(x>16.0f || x< -16.0f) b.setSample(c,n,juce::jlimit(-16.0f,16.0f,x));
     }
     thresholdSmooth.setTargetValue(controls[0]->load());
-    const auto selectedRatio=ratios[size_t(juce::jlimit(0,10,int(controls[1]->load())))];
+    const auto selectedRatio=currentRatio();
     if(selectedRatio<1 || ratioSmooth.getCurrentValue()<1) ratioSmooth.setCurrentAndTargetValue(selectedRatio);
     else ratioSmooth.setTargetValue(selectedRatio);
     analogSmooth.setTargetValue(controls[15]->load());
-    decaySmooth.setTargetValue(decays[size_t(juce::jlimit(0,5,int(controls[2]->load())))]); clockSmooth.setTargetValue(controls[3]->load()); crushSmooth.setTargetValue(0.0f);
+    decaySmooth.setTargetValue(currentReleaseMs()); clockSmooth.setTargetValue(controls[3]->load()); crushSmooth.setTargetValue(0.0f);
     eqSmooth.setTargetValue(controls[5]->load()); hpfSmooth.setTargetValue(controls[6]->load()); linkSmooth.setTargetValue(controls[7]->load());
     bypassSmooth.setTargetValue(hostBypass?1:controls[8]->load()); padSmooth.setTargetValue(controls[9]->load()>0.5f?0.25f:1);
     kiSmooth.setTargetValue(controls[10]->load()); pdaSmooth.setTargetValue(controls[11]->load()); weightSmooth.setTargetValue(controls[12]->load()); rawSmooth.setTargetValue(0.0f); outputSmooth.setTargetValue(juce::Decibels::decibelsToGain(controls[14]->load()));
@@ -390,13 +404,13 @@ double PWMToneBoyAudioProcessor::responseForProfile(double frequency,double rate
 double PWMToneBoyAudioProcessor::linearResponseDb(double frequency) const
 {
     if(parameter("bypass")>0.5f) return 0;
-    const auto ratio=ratios[size_t(juce::jlimit(0,10,int(parameter("ratioIndex"))))];
+    const auto ratio=currentRatio();
     return responseForProfile(frequency,analysisSampleRate.load(),parameter("eqIn")>0.5f,parameter("threshold"),ratio,parameter("outputGain"),parameter("pad")>0.5f,analysisAnalogMix.load(),analogProfileSnapshot(),analysisAGain.load())-analysisGainReduction.load();
 }
 juce::AudioProcessorParameter* PWMToneBoyAudioProcessor::getBypassParameter() const { return apvts.getParameter("bypass"); }
 void PWMToneBoyAudioProcessor::getStateInformation(juce::MemoryBlock& b)
 {
-    auto state=apvts.copyState(); state.setProperty("editorWidth",editorWidth.load(),nullptr);
+    auto state=apvts.copyState(); state.setProperty("continuousDynamics",1,nullptr); state.setProperty("editorWidth",editorWidth.load(),nullptr);
     if(auto xml=state.createXml()) copyXmlToBinary(*xml,b);
 }
 void PWMToneBoyAudioProcessor::setStateInformation(const void* data,int size)
@@ -404,6 +418,17 @@ void PWMToneBoyAudioProcessor::setStateInformation(const void* data,int size)
     if(auto xml=getXmlFromBinary(data,size); xml && xml->hasTagName(apvts.state.getType()))
     {
         auto state=juce::ValueTree::fromXml(*xml);
+        if(!state.hasProperty("continuousDynamics"))
+        {
+            const auto read=[&](const char* id,float fallback){ const auto child=state.getChildWithProperty("id",id); return child.isValid()?float(child.getProperty("value",fallback)):fallback; };
+            const int oldRatio=juce::jlimit(0,10,int(read("ratioIndex",2))),oldDecay=juce::jlimit(0,5,int(read("decayIndex",1)));
+            const auto write=[&](const char* id,float value){ auto child=state.getChildWithProperty("id",id); if(!child.isValid()) { child=juce::ValueTree("PARAM"); child.setProperty("id",id,nullptr); state.addChild(child,-1,nullptr); } child.setProperty("value",value,nullptr); };
+            write("compressRatio",oldRatio<=6?ratios[size_t(oldRatio)]:3.0f);
+            write("expandRatio",oldRatio==7?1.3f:oldRatio==8?1.4f:1.3f);
+            write("upwardRatio",oldRatio==9?1.3f:oldRatio==10?1.4f:1.3f);
+            write("releaseMs",decays[size_t(oldDecay)]); write("dynamicsMode",oldRatio>=9?2.0f:oldRatio>=7?1.0f:0.0f);
+            state.setProperty("continuousDynamics",1,nullptr);
+        }
         editorWidth.store(juce::jlimit(336,840,int(state.getProperty("editorWidth",420))));
         apvts.replaceState(state);
     }

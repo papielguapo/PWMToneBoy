@@ -10,6 +10,7 @@ public:
     ~PWMToneBoyAudioProcessorEditor() override;
     void paint(juce::Graphics&) override;
     void resized() override;
+    void refreshReadoutsForDiagnostics() { timerCallback(); }
 private:
     class Panel final : public juce::Component
     {
@@ -21,8 +22,19 @@ private:
     void paintPanel(juce::Graphics&);
     void paintStaticPanel(juce::Graphics&);
     juce::Image skin;
-    std::array<float,6> lastReadouts{-999,-999,-999,-999,-999,-999};
+    std::array<float,9> lastReadouts{-999,-999,-999,-999,-999,-999,-999,-999,-999};
     void timerCallback() override;
+    void updateRatioAttachment();
+    void updateReadouts();
+    const char* valueParameter(size_t index) const;
+    std::array<juce::Label,5> valueLabels;
+    std::array<juce::String,5> editingIds;
+    class ModeButton final : public juce::Button
+    {
+    public: ModeButton():juce::Button("Dynamics mode") {}
+        void paintButton(juce::Graphics&,bool,bool) override {}
+    } ratioModeButton;
+    int attachedMode{-1};
     void chooseFile();
     void setupKnob(juce::Slider&,const char*,bool,juce::Rectangle<int>,const juce::String&);
     void setupButton(juce::ToggleButton&,const char*,const char*,juce::Rectangle<int>,const juce::String&);
