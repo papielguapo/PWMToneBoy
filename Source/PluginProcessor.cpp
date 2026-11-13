@@ -24,7 +24,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout PWMToneBoyAudioProcessor::cr
     for (size_t i=0;i<names.size();++i)
         p.add(std::make_unique<juce::AudioParameterBool>(ID{ids[i+5],1},names[i],defaults[i]));
     p.add(std::make_unique<juce::AudioParameterFloat>(ID{"outputGain",1},"Output (dB)",juce::NormalisableRange<float>(-24,12,0.1f),0.0f));
-    p.add(std::make_unique<juce::AudioParameterBool>(ID{"analogMode",1},"Analog A / Direct D",false));
+    p.add(std::make_unique<juce::AudioParameterBool>(ID{"analogMode",1},"Analog A / Dynamic D",false));
     return p;
 }
 
@@ -64,6 +64,7 @@ void PWMToneBoyAudioProcessor::prepareToPlay(double rate,int block)
     fastRelease=coefficient(highRate,25); rmsCoefficient=coefficient(highRate,10);
     memoryAttack=coefficient(highRate,80); memoryRelease=coefficient(highRate,1400);
     limiterRelease=coefficient(highRate,60);
+    analogAttack=coefficient(highRate,35); analogRelease=coefficient(highRate,650);
     for(auto& c:channels)
     {
         c=Channel{};
@@ -72,8 +73,9 @@ void PWMToneBoyAudioProcessor::prepareToPlay(double rate,int block)
         c.infra1.configure(highRate,18,0.54119610f,0);
         c.infra2.configure(highRate,18,1.30656296f,0);
         c.phoenix.configure(highRate,52,0.78f,2,0.85f);
-        c.analogLow.configure(highRate,80,0.65f,2,0.30f);
-        c.analogHigh.configure(highRate,6000,0.50f,2,-0.25f);
+        const auto profile=analogProfile(controls[15]->load(),0);
+        c.analogLow.configure(highRate,profile.lowHz,0.65f,2,profile.lowDb);
+        c.analogHigh.configure(highRate,profile.highHz,0.50f,2,profile.highDb);
     }
     auto init=[this](auto& s,float v){ s.reset(highRate,0.02); s.setCurrentAndTargetValue(v); };
     analogSmooth.reset(highRate,0.04); analogSmooth.setCurrentAndTargetValue(controls[15]->load());
@@ -90,6 +92,7 @@ void PWMToneBoyAudioProcessor::reset()
     if(oversampling) oversampling->reset();
     for(auto& c:channels) { c.fast=c.slow=c.rms=c.previousSc=c.held=c.ceiling=c.quietSeconds=0; c.gainReduction=c.releaseMemory=c.peakHold=0; c.limiterGain=1; c.dryDelay.fill(0); c.dryPosition=0; c.scHpf.clear(); c.reconstruction.clear(); c.infra1.clear(); c.infra2.clear(); c.phoenix.clear(); c.analogLow.clear(); c.analogHigh.clear(); }
     clockPhase=demoTime=0;
+    analogLoad=0; analysisAnalogLoad.store(0); analysisAnalogMix.store(analogSmooth.getCurrentValue()); analysisGainReduction.store(0);
     // The SPSC diagnostic queue is intentionally not reset while an editor can consume it.
 }
 void PWMToneBoyAudioProcessor::releaseResources() { fileTransport.releaseResources(); }
@@ -117,13 +120,20 @@ float PWMToneBoyAudioProcessor::processPhoenixSapphireCeiling(float x,float& his
     history=magnitude<=0.98f?x:std::copysign(0.98f+0.02f*std::tanh((magnitude-0.98f)/0.02f),x);
     return history;
 }
-float PWMToneBoyAudioProcessor::processAnalogColour(float x,float memory) noexcept
+PWMToneBoyAudioProcessor::AnalogProfile PWMToneBoyAudioProcessor::analogProfile(float modeMix,float load) noexcept
+{
+    load=juce::jlimit(0.0f,1.0f,load); modeMix=juce::jlimit(0.0f,1.0f,modeMix);
+    return {mix(0.15f+0.85f*load,0.30f,modeMix),mix(-0.10f-0.75f*load,-0.25f,modeMix),mix(65.0f,80.0f,modeMix),mix(8000.0f,6000.0f,modeMix)};
+}
+float PWMToneBoyAudioProcessor::processAnalogColour(float x,float memory,float load,bool dynamic) noexcept
 {
     // Original, noise-free class-A-inspired colour, not a recovered hardware circuit.
     // Unity small-signal slope; bounded smooth H2/H3 grow with signal level and
     // sustained gain-control activity. Zero input is exactly zero, without bias.
     const float square=x*x,drive=1.0f+0.2f*memory;
-    return x+drive*(0.0035f*square/(1.0f+0.25f*square)-0.006f*x*square/(1.0f+square));
+    const float even=dynamic?0.002f+0.018f*load:0.0035f;
+    const float odd=dynamic?0.004f+0.020f*load:0.006f;
+    return x+drive*(even*square/(1.0f+0.25f*square)-odd*x*square/(1.0f+square));
 }
 void PWMToneBoyAudioProcessor::processBlock(juce::AudioBuffer<float>& b,juce::MidiBuffer& midi) { midi.clear(); process(b,false); }
 void PWMToneBoyAudioProcessor::processBlockBypassed(juce::AudioBuffer<float>& b,juce::MidiBuffer& midi) { midi.clear(); process(b,true); }
@@ -203,6 +213,9 @@ void PWMToneBoyAudioProcessor::processChunk(juce::AudioBuffer<float>& b,int star
             pdr=ch.releaseMemory;
         }
         if(nc==1) gain[1]=gain[0];
+        const auto loadTarget=juce::jlimit(0.0f,1.0f,juce::jmax(channels[0].fast,channels[size_t(nc-1)].fast)*1.8f+juce::jmax(channels[0].releaseMemory,channels[size_t(nc-1)].releaseMemory)*0.35f);
+        analogLoad=loadTarget+(analogLoad-loadTarget)*(loadTarget>analogLoad?analogAttack:analogRelease);
+        const auto profile=analogProfile(analog,analogLoad);
         const auto mean=(gain[0]+gain[1])*0.5f;
         ToneBoyScopeFrame frame;
         float postMakeup[2]{};
@@ -219,8 +232,9 @@ void PWMToneBoyAudioProcessor::processChunk(juce::AudioBuffer<float>& b,int star
             const auto dac=mix(x,quantized,mix(crush,1.0f,raw)*gates[c]);
             if((n&31u)==0u) ch.reconstruction.configure(highRate,mix(20000.0f,11200.0f,eq),0.70710678f,1);
             const auto reconstructed=ch.reconstruction.tick(dac);
+            if((n&31u)==0u) { ch.analogLow.configure(highRate,profile.lowHz,0.65f,2,profile.lowDb); ch.analogHigh.configure(highRate,profile.highHz,0.50f,2,profile.highDb); }
             const auto analogContour=ch.analogHigh.tick(ch.analogLow.tick(reconstructed));
-            const auto preInfra=mix(reconstructed,processAnalogColour(analogContour,ch.releaseMemory),analog);
+            const auto preInfra=mix(processAnalogColour(analogContour,ch.releaseMemory,analogLoad,true),processAnalogColour(analogContour,ch.releaseMemory),analog);
             // All asymmetric colour precedes the 18 Hz blocker; no DC generated
             // by the optional A stage is left downstream of the infrasound filters.
             const auto infra=ch.infra2.tick(ch.infra1.tick(preInfra));
@@ -278,6 +292,7 @@ void PWMToneBoyAudioProcessor::processChunk(juce::AudioBuffer<float>& b,int star
     for(int n=0;n<z2;++n) scopeStorage[size_t(s2+n)]=scopeScratch[size_t(z1+n)];
     scopeFifo.finishedWrite(z1+z2);
     if(z1+z2<count) scopeOverruns.fetch_add(1,std::memory_order_relaxed);
+    analysisAnalogLoad.store(analogLoad); analysisAnalogMix.store(analogSmooth.getCurrentValue()); analysisGainReduction.store(scopeScratch[size_t(count-1)].reduction);
     inputDb.store(db(inPeak)); outputDb.store(db(outPeak)); reductionDb.store(maxReduction); gateMeter.store(gate); kiMeter.store(ki); pdrMeter.store(pdr);
 }
 int PWMToneBoyAudioProcessor::readScope(ToneBoyScopeFrame* destination,int maximum)
@@ -287,7 +302,7 @@ int PWMToneBoyAudioProcessor::readScope(ToneBoyScopeFrame* destination,int maxim
     for(int i=0;i<z2;++i) destination[z1+i]=scopeStorage[size_t(s2+i)];
     scopeFifo.finishedRead(z1+z2); return z1+z2;
 }
-double PWMToneBoyAudioProcessor::linearResponseDb(double frequency,double rate,bool eq,float threshold,float ratio,float trim,bool pad,bool analog)
+double PWMToneBoyAudioProcessor::linearResponseDb(double frequency,double rate,bool eq,float threshold,float ratio,float trim,bool pad,bool analog,float load,float modeMix)
 {
     rate=juce::jmax(8000.0,rate);
     frequency=juce::jlimit(1.0,rate*0.49,frequency);
@@ -297,7 +312,8 @@ double PWMToneBoyAudioProcessor::linearResponseDb(double frequency,double rate,b
     filters[1].configure(internalRate,18,1.30656296f,0);
     filters[2].configure(internalRate,52,0.78f,2,0.85f);
     filters[3].configure(internalRate,eq?11200.0f:20000.0f,0.70710678f,1);
-    if(analog) { filters[4].configure(internalRate,80,0.65f,2,0.30f); filters[5].configure(internalRate,6000,0.50f,2,-0.25f); }
+    const auto profile=analogProfile(modeMix<0?(analog?1.0f:0.0f):modeMix,load);
+    filters[4].configure(internalRate,profile.lowHz,0.65f,2,profile.lowDb); filters[5].configure(internalRate,profile.highHz,0.50f,2,profile.highDb);
     const auto z=std::polar(1.0,-juce::MathConstants<double>::twoPi*frequency/internalRate);
     double magnitude=1;
     for(const auto& filter:filters) magnitude*=std::abs((filter.b0+filter.b1*z+filter.b2*z*z)/(1.0+filter.a1*z+filter.a2*z*z));
@@ -307,7 +323,7 @@ double PWMToneBoyAudioProcessor::linearResponseDb(double frequency) const
 {
     if(parameter("bypass")>0.5f) return 0;
     const auto ratio=ratios[size_t(juce::jlimit(0,6,int(parameter("ratioIndex"))))];
-    return linearResponseDb(frequency,analysisSampleRate.load(),parameter("eqIn")>0.5f,parameter("threshold"),ratio,parameter("outputGain"),parameter("pad")>0.5f,parameter("analogMode")>0.5f);
+    return linearResponseDb(frequency,analysisSampleRate.load(),parameter("eqIn")>0.5f,parameter("threshold"),ratio,parameter("outputGain"),parameter("pad")>0.5f,parameter("analogMode")>0.5f,analysisAnalogLoad.load(),analysisAnalogMix.load())-analysisGainReduction.load();
 }
 juce::AudioProcessorParameter* PWMToneBoyAudioProcessor::getBypassParameter() const { return apvts.getParameter("bypass"); }
 void PWMToneBoyAudioProcessor::getStateInformation(juce::MemoryBlock& b)

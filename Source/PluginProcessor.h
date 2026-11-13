@@ -35,13 +35,16 @@ public:
     static float computeSCurveGainLin(float envelope, float threshold, float ratio) noexcept;
     static float processCraneTriodeEven(float x, float slow, float k2, float grid) noexcept;
     static float processPhoenixSapphireCeiling(float x, float& history) noexcept;
-    static float processAnalogColour(float x,float memory) noexcept;
+    static float processAnalogColour(float x,float memory,float load=0,bool dynamic=false) noexcept;
+    struct AnalogProfile { float lowDb{},highDb{},lowHz{},highHz{}; };
+    static AnalogProfile analogProfile(float modeMix,float load) noexcept;
     float parameter(const char* id) const { return apvts.getRawParameterValue(id)->load(); }
     int readScope(ToneBoyScopeFrame* destination, int maximum);
     double linearResponseDb(double frequency) const;
-    static double linearResponseDb(double frequency,double rate,bool eq,float threshold,float ratio,float outputDb,bool pad,bool analog=false);
+    static double linearResponseDb(double frequency,double rate,bool eq,float threshold,float ratio,float outputDb,bool pad,bool analog=false,float load=0,float modeMix=-1);
     std::atomic<double> analysisSampleRate{44100};
     std::atomic<unsigned> scopeOverruns{0};
+    std::atomic<float> analysisAnalogLoad{0},analysisAnalogMix{0},analysisGainReduction{0};
     bool loadTestFile(const juce::File&);
     void setTestSource(int source);
     bool isStandalone() const { return wrapperType == wrapperType_Standalone; }
@@ -76,6 +79,7 @@ private:
     std::vector<ToneBoyScopeFrame> scopeScratch;
     std::array<std::atomic<float>*,16> controls{};
     juce::SmoothedValue<float> analogSmooth;
+    float analogLoad{},analogAttack{},analogRelease{};
     juce::SmoothedValue<float> outputSmooth;
     juce::SmoothedValue<float> thresholdSmooth, ratioSmooth, decaySmooth, clockSmooth, crushSmooth, padSmooth, bypassSmooth;
     juce::SmoothedValue<float> eqSmooth, hpfSmooth, linkSmooth, kiSmooth, pdaSmooth, weightSmooth, rawSmooth;

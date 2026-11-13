@@ -6,7 +6,7 @@
 class DotMatrixLCDComponent final : public juce::Component, private juce::Timer
 {
 public:
-    explicit DotMatrixLCDComponent(PWMToneBoyAudioProcessor& processor):p(processor),fft(10)
+    explicit DotMatrixLCDComponent(PWMToneBoyAudioProcessor& processor):p(processor),fft(10),detailedFft(13)
     {
         setTitle("LCD diagnostics"); setDescription("Click to cycle six views, including linear and harmonic analysis");
         setMouseCursor(juce::MouseCursor::PointingHandCursor); startTimerHz(60);
@@ -16,6 +16,7 @@ public:
     int getMode() const { return mode; }
     void refreshDiagnostics() { timerCallback(); }
     const ToneBoyHarmonicResult& getHarmonicResult() const { return harmonic; }
+    float getSpectrumPeakDb() const { return *std::max_element(spectralOutput.begin(),spectralOutput.end()); }
     void paint(juce::Graphics& g) override
     {
         g.saveState(); g.addTransform(juce::AffineTransform::scale(float(getWidth())/240,float(getHeight())/176));
@@ -65,7 +66,9 @@ private:
         const bool eq=p.parameter("eqIn")>0.5f,pad=p.parameter("pad")>0.5f,bypassed=p.parameter("bypass")>0.5f,analog=p.parameter("analogMode")>0.5f;
         const auto threshold=p.parameter("threshold"),trim=p.parameter("outputGain");
         const auto ratio=PWMToneBoyAudioProcessor::ratios[size_t(juce::jlimit(0,6,int(p.parameter("ratioIndex"))))];
-        const auto response=[=](double f){return bypassed?0.0:PWMToneBoyAudioProcessor::linearResponseDb(f,rate,eq,threshold,ratio,trim,pad,analog);};
+        const auto load=p.analysisAnalogLoad.load(),modeMix=p.analysisAnalogMix.load();
+        const auto reduction=bypassed?0.0f:p.analysisGainReduction.load();
+        const auto response=[=](double f){return bypassed?0.0:PWMToneBoyAudioProcessor::linearResponseDb(f,rate,eq,threshold,ratio,trim,pad,analog,load,modeMix);};
         const double maximum=juce::jmin(20000.0,rate*0.45);
         const auto reference=response(1000);
         const float high=float(juce::jmax(12.0,std::ceil((reference+3)/6)*6));
@@ -82,10 +85,10 @@ private:
             const auto x=xFor(f); g.setColour(ink.withAlpha(0.2f)); g.drawLine(x,23,x,96,0.5f);
             label(g,f>=1000?juce::String(f/1000,0)+"k":juce::String(f,0),juce::roundToInt(x)-5,97,24,9,6.5f);
         }
-        juce::Path curve;
-        for(int i=0;i<=204;++i) { const auto frequency=5*std::pow(maximum/5,double(i)/204); const auto y=yFor(response(frequency)); if(i==0) curve.startNewSubPath(28,y); else curve.lineTo(float(28+i),y); }
-        g.saveState(); g.reduceClipRegion(28,22,205,75); g.setColour(light); g.strokePath(curve,juce::PathStrokeType(1.6f)); g.restoreState();
-        label(g,juce::String(analog?"MODEL A":"MODEL D")+" / SMALL SIGNAL "+juce::String(reference,1)+"dB",5,108,230,9,7);
+        juce::Path curve,referenceCurve;
+        for(int i=0;i<=204;++i) { const auto frequency=5*std::pow(maximum/5,double(i)/204); const auto nominal=response(frequency); const auto y=yFor(nominal-reduction),referenceY=yFor(nominal); if(i==0) {curve.startNewSubPath(28,y); referenceCurve.startNewSubPath(28,referenceY);} else {curve.lineTo(float(28+i),y); referenceCurve.lineTo(float(28+i),referenceY);} }
+        g.saveState(); g.reduceClipRegion(28,22,205,75); g.setColour(ink.withAlpha(0.45f)); g.strokePath(referenceCurve,juce::PathStrokeType(0.7f)); g.setColour(light); g.strokePath(curve,juce::PathStrokeType(1.6f)); g.restoreState();
+        label(g,juce::String(analog?"LIVE A":"LIVE D")+" / GR:"+juce::String(reduction,1)+"dB  LOAD:"+juce::String(load*100,0)+"%",5,108,230,9,7);
     }
     void paintHarmonics(juce::Graphics& g,juce::Colour ink,juce::Colour light)
     {
@@ -95,27 +98,40 @@ private:
             const auto y=24.0f-float(db)*0.66f; g.setColour(ink.withAlpha(0.25f)); g.drawLine(28,y,233,y,0.5f);
             label(g,juce::String(db),2,juce::roundToInt(y)-4,26,8,6.5f);
         }
-        for(int h=0;h<10;++h)
+        const auto rate=p.analysisSampleRate.load(), maximum=juce::jmin(20000.0,rate*0.45);
+        const auto xFor=[maximum](double f){return 28.0f+204.0f*float(std::log(f/20)/std::log(maximum/20));};
+        const auto plot=[&](const auto& values,juce::Colour colour,float thickness)
         {
-            const auto x=34.0f+float(h)*20; label(g,juce::String(h+1),int(x)-1,87,18,9,7);
-            if(valid && h<harmonic.harmonicCount)
+            juce::Path path;
+            for(int i=0;i<=204;++i)
             {
-                const auto value=juce::jlimit(-90.0f,0.0f,harmonic.harmonicsDb[size_t(h)]);
-                const auto top=24-value*0.66f;
-                g.setColour(ink); for(float y=83;y>=top;y-=3.5f) g.fillRect(x,y,8.0f,2.5f);
-                g.setColour(light); g.fillRect(x,top,8.0f,2.0f);
+                const double f=20*std::pow(maximum/20,double(i)/204);
+                const auto edge=std::sqrt(std::pow(maximum/20,1.0/204));
+                const int first=juce::jlimit(1,4095,int(f/edge*8192/rate));
+                const int last=juce::jlimit(first,4095,int(std::ceil(f*edge*8192/rate)));
+                float peak=-120; for(int bin=first;bin<=last;++bin) peak=juce::jmax(peak,values[size_t(bin)]);
+                const float y=24-juce::jlimit(-90.0f,0.0f,peak)*0.66f;
+                if(i==0) path.startNewSubPath(28,y); else path.lineTo(float(28+i),y);
             }
+            g.setColour(colour); g.strokePath(path,juce::PathStrokeType(thickness));
+        };
+        plot(spectralInput,ink.withAlpha(0.7f),0.7f); plot(spectralOutput,light,1.3f);
+        for(double f:{20.0,100.0,1000.0,10000.0}) if(f<=maximum) label(g,f>=1000?juce::String(f/1000,0)+"k":juce::String(f,0),juce::roundToInt(xFor(f))-4,87,23,9,6.5f);
+        if(valid) for(int h=1;h<=harmonic.harmonicCount;++h)
+        {
+            const auto f=harmonic.frequency*h;
+            if(f>=20 && f<=maximum) { const auto x=xFor(f); g.setColour(ink.withAlpha(0.4f)); for(float y=23;y<83;y+=5) g.drawLine(x,y,x,y+2,0.5f); if(h<=3) label(g,"H"+juce::String(h),juce::roundToInt(x)-4,18,16,8,6); }
         }
         if(valid)
         {
-            label(g,"F0:"+juce::String(harmonic.frequency,1)+"Hz  H1-H"+juce::String(harmonic.harmonicCount)+" dBc",5,97,230,9,7);
+            label(g,"F0:"+juce::String(harmonic.frequency,1)+"Hz  IN/OUT dBFS",5,97,230,9,7);
             const auto level=[](double d){return d<=-90?juce::String("<-90"):juce::String(d,1);};
             label(g,"THD:"+level(harmonic.thdDb)+"  THD+N:"+level(harmonic.thdnDb)+" dB",5,108,230,9,7);
         }
         else
         {
-            label(g,harmonic.status==ToneBoyHarmonicResult::Status::silence?"NO SIGNAL / WAITING FOR TONE":"USE A STABLE SINGLE SINE TONE",5,98,230,9,7);
-            label(g,"PASSIVE ANALYSIS / NO TEST AUDIO",5,108,230,9,6.5f);
+            label(g,getSpectrumPeakDb()<=-90?"NO SIGNAL / LIVE SPECTRUM":"LIVE SPECTRUM / DARK IN / LIGHT OUT",5,98,230,9,6.5f);
+            label(g,"THD: --  THD+N: -- / USE SINE",5,108,230,9,7);
         }
     }
     void label(juce::Graphics& g,const juce::String& s,int x,int y,int w,int h,float size)
@@ -156,17 +172,25 @@ private:
             {
                 harmonicWrite=0;
                 const auto now=juce::Time::getMillisecondCounterHiRes();
-                if(now-lastAnalysisMs>=150) { harmonic=ToneBoyHarmonicAnalysis::analyse(harmonicInput,harmonicOutput,rate); lastAnalysisMs=now; }
+                if(now-lastAnalysisMs>=150)
+                {
+                    harmonic=ToneBoyHarmonicAnalysis::analyse(harmonicInput,harmonicOutput,rate); lastAnalysisMs=now;
+                    detailedInput.fill(0); detailedOutput.fill(0);
+                    for(size_t j=0;j<8192;++j) { const auto window=0.5f-0.5f*std::cos(juce::MathConstants<float>::twoPi*float(j)/8191); detailedInput[j]=harmonicInput[j]*window; detailedOutput[j]=harmonicOutput[j]*window; }
+                    detailedFft.performFrequencyOnlyForwardTransform(detailedInput.data()); detailedFft.performFrequencyOnlyForwardTransform(detailedOutput.data());
+                    for(size_t bin=0;bin<4096;++bin) { spectralOutput[bin]=juce::Decibels::gainToDecibels(detailedOutput[bin]/2048,-120.0f); spectralInput[bin]=juce::Decibels::gainToDecibels(detailedInput[bin]/2048,-120.0f); }
+                }
             }
             if(fftWrite==1024)
             {
                 fftWrite=0; fftData.fill(0);
-                for(int j=0;j<1024;++j) fftData[size_t(j)]=fftInput[size_t(j)]*(0.5f-0.5f*std::cos(juce::MathConstants<float>::twoPi*float(j)/1023));
+                for(int j=0;j<1024;++j) { const auto w=0.5f-0.5f*std::cos(juce::MathConstants<float>::twoPi*float(j)/1023); fftData[size_t(j)]=fftInput[size_t(j)]*w; }
                 fft.performFrequencyOnlyForwardTransform(fftData.data());
                 for(int bar=0;bar<48;++bar) { const auto hz=30*std::pow(20000.0/30,double(bar)/47); const int bin=juce::jlimit(1,511,int(hz*1024/rate)); spectrum[size_t(bar)]=juce::Decibels::gainToDecibels(fftData[size_t(bin)]/256,-90.0f); }
             }
         }
         if(count==0) for(auto& v:spectrum) v=juce::jmax(-90.0f,v-1.5f);
+        if(count==0) { for(auto& v:spectralOutput) v=juce::jmax(-120.0f,v-2); for(auto& v:spectralInput) v=juce::jmax(-120.0f,v-2); }
         if(count>0) lastSignalMs=juce::Time::getMillisecondCounterHiRes();
         else if(juce::Time::getMillisecondCounterHiRes()-lastSignalMs>500) { harmonic={}; harmonicWrite=0; }
         for(size_t i=0;i<48;++i) peaks[i]=juce::jmax(spectrum[i],peaks[i]-0.45f);
@@ -177,6 +201,9 @@ private:
     juce::dsp::FFT fft;
     std::array<float,2048> fftData{};
     std::array<float,1024> fftInput{};
+    juce::dsp::FFT detailedFft;
+    std::array<float,16384> detailedInput{},detailedOutput{};
+    std::array<float,4096> spectralOutput=[] { std::array<float,4096> a{}; a.fill(-120); return a; }(),spectralInput=spectralOutput;
     std::array<float,48> spectrum=[] { std::array<float,48> a{}; a.fill(-90); return a; }(),peaks=spectrum;
     std::array<ToneBoyScopeFrame,1024> wave{};
     std::array<float,120> grHistory{};

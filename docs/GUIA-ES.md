@@ -1,4 +1,4 @@
-# Guía de uso — PWM TONE BOY v1.1.0
+# Guía de uso — PWM TONE BOY v1.2.0
 
 **Creado por PAPIELGUAPO · Windows x64 · VST3 + Standalone**
 
@@ -6,13 +6,13 @@
 
 ## Qué hace el plugin
 
-PWM TONE BOY es un compresor estéreo con rodilla suave, recuperación con memoria del programa y color armónico KI opcional. Permite controlar la dinámica conservando una ruta de procesamiento lineal en la etapa de color cuando KI está apagado. Incluye protección dinámica de picos, filtros de reconstrucción y subgraves, compensación automática de ganancia y ajuste manual OUTPUT.
+PWM TONE BOY es un compresor estéreo con rodilla suave, recuperación con memoria del programa y color armónico KI opcional. Permite controlar la dinámica con una etapa KI que se vuelve lineal al apagarla; los perfiles A/D conservan su propia coloración. Incluye protección dinámica de picos, filtros de reconstrucción y subgraves, compensación automática de ganancia y ajuste manual OUTPUT.
 
-Es un diseño original inspirado en comportamientos del STC-8. No se ha calibrado contra un equipo Crane Song real y no se presenta como una réplica certificada. La etapa KI apagada es lineal; los filtros y la compresión siguen funcionando.
+Es un diseño original inspirado en comportamientos del STC-8. No se ha calibrado contra un equipo Crane Song real y no se presenta como una réplica certificada. La etapa KI apagada es lineal; los filtros, la compresión y el color A/D siguen funcionando.
 
 ## Descargar e instalar
 
-1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.1.0](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.1.0).
+1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.2.0](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.2.0).
 2. Descomprime el ZIP. Copia la carpeta completa `VST3/PWM TONE BOY.vst3` a `C:\Program Files\Common Files\VST3`. Cierra los programas que estén usando el plugin antes de sustituirlo. Windows puede solicitar permisos de administrador.
 3. Vuelve a escanear los plugins en tu DAW y carga **PWM TONE BOY**, fabricante **PAPIELGUAPO**.
 4. Para usarlo sin DAW, abre `Standalone/PWM TONE BOY.exe`.
@@ -35,7 +35,7 @@ El ZIP también incluye esta guía, las imágenes de la interfaz y de los nuevos
 | **PWM THRESHOLD** | Fija el umbral del compresor. Al bajarlo, una mayor parte de la señal entra en compresión. La rodilla hace que la transición alrededor del umbral sea gradual. El display inferior muestra dB. | −42 a 0 dB; inicial **−18 dB**. |
 | **B — RATIO** | Define la intensidad de la compresión por encima de la rodilla. 1:1 desactiva la reducción del compresor, pero conserva filtros, KI si está activo, Auto-Gain según su fórmula y protección de picos. INF es una relación interna de 100:1. | **1:1, 2:1, 3:1, 5:1, 10:1, 20:1, INF**; inicial **3:1**. |
 | **A — DECAY** | Ajusta la recuperación base de la dinámica. Valores cortos recuperan antes y largos mantienen más tiempo la reducción. El tiempo real también depende de la memoria de la compresión: no es un cronómetro fijo de vuelta a cero. | **100, 200, 400, 800 ms, 1.6 y 3.2 s**; inicial **200 ms**. |
-| **SELECT** | Control de reloj PWM heredado. Conserva su posición y lectura, pero **no modifica el audio en v1.1.0**, porque sample-and-hold y DAC están desactivados. | 4–250 kHz; inicial **120 kHz**. |
+| **SELECT** | Control de reloj PWM heredado. Conserva su posición y lectura, pero **no modifica el audio en v1.2.0**, porque sample-and-hold y DAC están desactivados. | 4–250 kHz; inicial **120 kHz**. |
 | **OUTPUT** | Sube o baja el nivel procesado después de Auto-Gain y de la protección de picos. No modifica el umbral ni el ratio. Los cambios se suavizan durante 20 ms. Ganancias positivas pueden superar 0 dBFS después de la protección; comprueba el nivel de salida del DAW. En BYPASS se escucha la señal seca, sin OUTPUT. | **−24 a +12 dB**; inicial **0 dB**. |
 
 ## Palancas y botones
@@ -47,22 +47,24 @@ El ZIP también incluye esta guía, las imágenes de la interfaz y de los nuevos
 | **LINK** | Comparte el 85% de la ganancia del compresor y mantiene un 15% independiente por canal. La protección de picos se enlaza para cuidar la imagen estéreo. | Compresión y protección de picos independientes por canal. | Activado. |
 | **BYPASS** | Escucha la señal seca con el retraso que compensa la latencia del plugin. La transición es suave y el motor continúa actualizando sus estados. BATTERY se apaga. | Escucha la señal procesada. | Desactivado. |
 | **PAD** | Atenúa la entrada multiplicándola por **0.25**, aproximadamente **−12.04 dB**, antes del procesamiento. | Entrada sin esa atenuación. | Desactivado. |
-| **KI** | Añade una curvatura par sutil, principalmente segundo armónico, dependiente de actividad y compresión. | El waveshaper es lineal; no quedan ni el antiguo logaritmo del semiciclo positivo ni una saturación permanente en esa etapa. | Activado. |
+| **KI** | Añade una curvatura par sutil, principalmente segundo armónico, dependiente de actividad y compresión. | El waveshaper de la etapa KI es lineal; no quedan ni el antiguo logaritmo del semiciclo positivo ni una saturación permanente en esa etapa. | Activado. |
 | **PDA** | Ante riesgo de sobrecarga, acorta el ataque nominal de **2.2 ms** hacia **0.35 ms**. Trabaja junto al control de picos. | Mantiene el ataque nominal sin ese acortamiento dinámico. | Activado. |
 | **H-SC** | Activa preénfasis diferencial en el sidechain y mezcla de detección **65% pico + 35% RMS**. Cambia cómo reacciona el compresor; no es un ecualizador directo de la salida. | Usa detección de pico sin ese preénfasis híbrido. | Activado. |
 
 ## Selector horizontal A / D
 
-Está en la antigua placa AUTO-GAIN. Haz clic en el selector para alternar; la palanca a la izquierda señala **A**, y a la derecha **D**.
+Está en la antigua placa AUTO-GAIN. Un clic alterna entre **A**, a la izquierda, y **D**, a la derecha. Ambas posiciones colorean ahora el audio: **en v1.2.0, D significa perfil dinámico, no modo limpio/directo**. Este cambio se ha hecho para que D resulte más analógico y perceptible. Los proyectos guardados con D sonarán con ese nuevo perfil al usar v1.2.0; la release v1.1.0 conserva el comportamiento anterior.
 
-- **D (valor inicial):** omite la etapa adicional de color. El compresor, KI si está activado y los filtros principales siguen funcionando. No equivale a BYPASS.
-- **A:** modifica el audio de verdad. Añade un contorno tonal suave de aproximadamente +0.30 dB a 80 Hz y −0.25 dB a 6 kHz, y una saturación moderada con armónicos pares e impares suaves. La intensidad depende del nivel y ligeramente de la memoria de compresión. Puede combinarse con KI.
-- El cambio cruza durante **40 ms** para evitar saltos. La selección se guarda con el estado del plugin y admite automatización.
-- **No genera ruido añadido:** sin hiss, hum, ruido aleatorio ni dither. Entrada cero desde reposo produce salida cero exacto, también con A y KI activos. La asimetría pasa por el filtro de 18 Hz para retirar DC.
-- M4 representa el contorno de filtros que se aplica al audio. No añade movimiento aleatorio a la curva. La saturación depende del nivel y no está representada en un modelo lineal de pequeña señal.
-- Es una coloración original inspirada en equipos analógicos y en la filosofía STC-8, no una emulación medida de un circuito Crane Song específico.
+- **A:** perfil analógico suave. Conserva el contorno de aproximadamente +0.30 dB a 80 Hz y −0.25 dB a 6 kHz, junto con saturación suave.
+- **D (valor inicial):** perfil analógico dinámico más marcado. La intensidad depende de la entrada y de la memoria de compresión. El contorno varía desde +0.15 hasta +1 dB alrededor de 65 Hz y desde −0.10 hasta −0.85 dB alrededor de 8 kHz. Los armónicos pares e impares también crecen suavemente con la carga. No hay movimiento aleatorio ni ruido añadido.
+- La carga responde aproximadamente en 35 ms y se relaja en 650 ms. El enlace del perfil entre canales usa la mayor actividad para evitar cambios de color distintos en cada lado. Estos tiempos son decisiones de diseño, no constantes medidas en hardware Crane Song.
+- La conmutación entre A y D cruza durante **40 ms**. Ambos perfiles se pueden combinar con KI y se guardan con el estado del plugin.
+- **No se genera hiss, hum, ruido aleatorio ni dither.** Entrada cero desde reposo produce cero exacto en ambos perfiles, también con KI activo. Las etapas asimétricas preceden al filtro de 18 Hz para retirar DC.
+- A/D no es BYPASS. Para escuchar la señal seca usa BYPASS. Desactivar KI omite su etapa propia de segundo armónico, pero no elimina la coloración de A/D.
 
-![Selector A y su curva](images/Analog-A.png)
+La coloración y la dinámica son originales e inspiradas en una filosofía analógica/STC-8. No representan una emulación calibrada de un Crane Song concreto.
+
+![Perfil A y curva viva](images/Analog-A.png)
 
 ## Auto-Gain y protección de picos
 
@@ -83,30 +85,40 @@ La interfaz actualiza sus diagnósticos a 60 Hz. Los títulos históricos perman
 | **M2 — STC-8M KNEE+PDR** | A la izquierda, curva estática de compresión según THRESHOLD/RATIO. A la derecha, historial de reducción de ganancia. Las lecturas indican PDA y H-SC activos/inactivos. **PDR:%** representa la memoria interna del programa: una cifra mayor implica mayor contribución de recuperación prolongada. La curva estática no muestra por sí sola el limitador ni la evolución temporal completa. |
 | **M3 — 4BIT DAC+PWM** | Vista de diagnóstico heredada: arriba se dibuja el punto interno de la antigua etapa DAC y abajo un tren PWM ilustrativo. **El DAC y ProSound están desactivados en audio**: no debes esperar escalones de cuantización ni que SELECT cambie el sonido. Las leyendas de DAC/RAW/% pueden reflejar parámetros antiguos conservados por compatibilidad, aunque el DSP los ignore. El tren PWM es una visualización, no una señal adicional enviada al DAW. |
 
-### M4 — LINEAR ANALYSIS
+### M4 — LINEAR ANALYSIS, ahora en vivo
 
 ![Linear Analysis](images/Linear-Analysis.png)
 
-Curva de respuesta en frecuencia del **modelo de pequeña señal**, con eje de frecuencia logarítmico y ganancia en dB. Incluye reconstrucción EQ IN, paso alto de 18 Hz, contorno de 52 Hz, filtros adicionales de A, PAD, Auto-Gain y OUTPUT. Muestra MODEL A o MODEL D según el selector. Con BYPASS activado muestra la respuesta plana de 0 dB de la ruta seca.
+La curva brillante sigue **los filtros y la ganancia que está aplicando realmente el DSP**. Incluye la carga dinámica del perfil D, la transición A/D y la reducción instantánea del compresor/protector de picos. Con música, baja y recupera nivel con la compresión; en D también cambia levemente de forma con la actividad de la señal.
 
-Es un modelo analítico, no un barrido de audio realizado en directo: **no incluye reducción de ganancia, saturación, limitador, rizado del oversampling ni respuesta de fase**. Por eso la ganancia de la curva puede ser mayor que la diferencia real IN/OUT cuando el compresor está reduciendo nivel. El modelo sigue la posición final de los controles; no representa cada instante de la transición de 40 ms de A/D. No hace falta reproducir audio para verlo.
+La línea tenue es la referencia con los mismos filtros y ajustes de ganancia, pero sin reducción del compresor/limitador. No es una comparación A frente a D ni una curva de bypass. **GR** es la reducción aplicada en ese instante y **LOAD** es el índice de actividad que gobierna D, no el uso de CPU. Se muestran LIVE A o LIVE D según el selector.
 
-### M5 — HARMONIC ANALYSIS
+El eje de frecuencia es logarítmico; el vertical expresa dB. Se incluyen EQ IN, 18 Hz, 52 Hz, el contorno A/D, PAD, Auto-Gain y OUTPUT. Con BYPASS, la curva queda plana a 0 dB.
 
-![Harmonic Analysis](images/Harmonic-Analysis.png)
+Sigue siendo un **modelo de magnitud alrededor del estado de trabajo actual**, no un barrido de laboratorio en directo. No dibuja los armónicos creados por saturación, la fase ni el rizado del oversampling. La señal de audio sí recibe los cambios representados: no se añade una animación artificial para simularlos. Si el host deja de procesar, no se inventa actividad nueva.
 
-Envía un **seno estable y limpio** desde tu DAW, o carga un WAV de un seno en Standalone. El plugin no inyecta tonos ni interrumpe la mezcla al entrar en esta pantalla.
+### M5 — HARMONIC ANALYSIS: espectro siempre visible
 
-- **F0:** frecuencia fundamental estimada a partir de la entrada, para no confundir H2 con el tono original.
-- **H1–H10:** barras de armónicos referidas a la fundamental; H1 es 0 dBc. Solo se incluyen los armónicos por debajo de 0.49 veces la frecuencia de muestreo. Los demás no se dibujan como medidas válidas.
-- **THD:** estimación de la energía de los armónicos H2–H10 válidos respecto a H1, expresada en dB.
-- **THD+N:** estimación del residuo de salida después de retirar fundamental y DC, respecto a H1. Incluye ruido que venga de la entrada, modulación de ganancia, transitorios y otros componentes no armónicos; el plugin no añade ruido de fondo propio.
-- **NO SIGNAL / WAITING FOR TONE:** silencio, nivel insuficiente o espera de datos.
-- **USE A STABLE SINGLE SINE TONE:** entrada que no cumple la condición de un único seno suficientemente estable. Música y multitono no se presentan como una medida fiable de THD.
+![Harmonic Analysis con seno](images/Harmonic-Analysis.png)
 
-Se usan ventanas de 8192 muestras del **canal 1**, con la entrada original alineada por latencia y la salida final, incluidos OUTPUT y BYPASS. Se necesitan al menos ocho ciclos por ventana; el mínimo práctico de F0 es `8 × sampleRate / 8192` (aproximadamente 47 Hz a 48 kHz o 188 Hz a 192 kHz). Se rechazan fundamentales iguales o superiores a una quinta parte de la frecuencia de muestreo. El nivel de entrada debe superar aproximadamente −80 dBFS RMS. Para empezar, prueba un seno de 1 kHz a −18 dBFS pico y espera a que la dinámica se estabilice.
+**Con música o multitono también ves el espectro.** La traza oscura muestra la entrada y la brillante la salida final del canal 1, incluidos OUTPUT y BYPASS. Así puedes observar cambios al conmutar KI, PDA, H-SC y A/D. KI y A/D generan color armónico; PDA y H-SC cambian el comportamiento de la dinámica y no son osciladores de armónicos independientes.
 
-La lectura se renueva aproximadamente hasta seis veces por segundo; el dibujo de la LCD sigue a 60 Hz. Por debajo de −90 dB se muestra **<-90**. Son estimaciones sin ponderación ni certificación de laboratorio, con límites de ventana finita, estabilidad del tono y resolución numérica. No equivalen a todas las funciones de un analizador externo. Deja estabilizar compresión y cambios de A/KI antes de comparar cifras.
+![Espectro con música, sin una THD ficticia](images/Harmonic-Music.png)
+
+El espectro usa FFT de 8192 muestras, escala logarítmica de frecuencia y dBFS. Se retienen los picos de bins dentro de cada columna gráfica para no perder líneas estrechas entre puntos del dibujo. Estas trazas no están normalizadas a la fundamental: un cambio de OUTPUT desplaza la salida verticalmente. La ventana finita puede limitar la lectura de armónicos débiles cerca de una señal fuerte.
+
+Cuando la entrada es un **seno limpio y estable**, se añaden:
+
+- **F0:** fundamental estimada a partir de la entrada.
+- **H1–H10:** marcadores en las frecuencias armónicas válidas dentro del rango visible. Se etiquetan H1–H3 para evitar amontonar texto; THD integra los armónicos disponibles hasta H10 por debajo de 0.49 veces la frecuencia de muestreo.
+- **THD:** energía estimada de H2–H10 respecto a H1, en dB.
+- **THD+N:** residuo de salida después de retirar fundamental y DC, respecto a H1. Incluye ruido que ya venga de la entrada, modulación de ganancia y transitorios; el plugin no introduce un generador de ruido propio.
+
+Con música o tono no válido, las curvas siguen visibles pero THD y THD+N muestran **--**. Con silencio verás NO SIGNAL y el suelo gráfico: no se inventan armónicos. No se inyecta ningún sonido automáticamente.
+
+Para medidas, envía un seno desde tu DAW o carga un WAV de un seno en Standalone. Empieza por 1 kHz a −18 dBFS pico y espera a que compresión y carga se estabilicen. Se necesitan ocho ciclos por ventana (`8 × sampleRate / 8192`: aproximadamente 47 Hz a 48 kHz y 188 Hz a 192 kHz). Se rechazan fundamentales iguales o superiores a una quinta parte de la frecuencia de muestreo y entradas inferiores a aproximadamente −80 dBFS RMS.
+
+La FFT y las medidas se actualizan aproximadamente hasta seis veces por segundo, fuera del callback de audio; la LCD se dibuja a 60 Hz. Las cifras inferiores a −90 dB se muestran como **<-90**. Son estimaciones sin ponderación ni certificación de laboratorio, no equivalentes a todas las funciones de un analizador externo.
 
 ### Medidores inferiores, siempre visibles
 
@@ -140,7 +152,7 @@ Empieza con ratio 3:1 y DECAY 200 ms. Baja THRESHOLD hasta ver unos pocos dB de 
 
 ## Verificación y alcance
 
-La versión binaria v1.1.0 pasó **3.890 comprobaciones automatizadas y pluginval nivel 10**. Se probaron silencio, estado, mono/estéreo, cambios de parámetros, distintas frecuencias de muestreo, bloques de 1–4097 muestras y cuatro tamaños del editor. Los registros se incluyen en QA. Son pruebas de estabilidad y comportamiento del software, no una certificación de equivalencia con hardware.
+La versión binaria v1.2.0 pasó **3.899 comprobaciones automatizadas y pluginval nivel 10**. Se probaron silencio, estado, mono/estéreo, cambios de parámetros, distintas frecuencias de muestreo, bloques de 1–4097 muestras y cuatro tamaños del editor. Los registros se incluyen en QA. Son pruebas de estabilidad y comportamiento del software, no una certificación de equivalencia con hardware.
 
 
-En v1.1.0 también se verificaron navegación por seis pantallas, tonos fuera de bins, rechazo de multitono y silencio, coherencia de THD/THD+N, correspondencia entre curva y filtros medidos, persistencia del selector A/D y silencio exacto con A + KI. La latencia sigue siendo de 6 muestras.
+En v1.2.0 también se verificaron navegación por seis pantallas, tonos fuera de bins, rechazo de multitono y silencio, coherencia de THD/THD+N, correspondencia entre curva y filtros medidos, persistencia del selector A/D y silencio exacto con A + KI. La latencia sigue siendo de 6 muestras.
