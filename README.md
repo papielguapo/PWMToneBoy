@@ -1,12 +1,12 @@
 # PWM TONE BOY — PAPIELGUAPO
 
-**v1.4.1 · PWM renovado sobre la base v1.4.0: A observado, D limpio y sin EXP/UP.**
+**v1.4.2 · Analizador A de la última versión anterior a la vuelta atrás, sin EXP/UP.**
 
-Título PWM más grande, sólido y junto a TONE BOY. El motor de audio y el comportamiento de Linear Analysis son los de v1.4.0.
+Título PWM más grande, sólido y junto a TONE BOY. El analizador y la vista A se recuperan de v1.6.0, adaptando únicamente la lectura del ratio a las siete posiciones originales. El circuito de audio A ya coincide con esa versión; se mantiene D limpio.
 
 ![PWM TONE BOY](docs/images/PWM-TONE-BOY.png)
 
-- **[Descargar VST3 + Standalone — Windows x64](https://github.com/papielguapo/PWMToneBoy/releases/download/v1.4.1/PWM-TONE-BOY-Windows-x64.zip)**
+- **[Descargar VST3 + Standalone — Windows x64](https://github.com/papielguapo/PWMToneBoy/releases/download/v1.4.2/PWM-TONE-BOY-Windows-x64.zip)**
 - **[Guía completa en español](docs/GUIA-ES.md)**
 - **[Auditoría v1.4.0: hallazgos, correcciones, medidas y límites](docs/AUDITORIA-v1.4.0.md)**
 
@@ -28,7 +28,7 @@ La auditoría corrige además muestras NaN/Inf antes del oversampling, metadatos
 
 ## Comprobado
 
-**3.935 aserciones sin fallos y pluginval nivel 10 superado.** Medidas sin editor, 48 kHz, seno 0.2 pico, ratio 1:1, umbral 0 dB, KI OFF, dos segundos de asentamiento y cuatro medidos:
+**3.940 aserciones sin fallos y pluginval nivel 10 superado.** Medidas sin editor, 48 kHz, seno 0.2 pico, ratio 1:1, umbral 0 dB, KI OFF, dos segundos de asentamiento y cuatro medidos:
 
 | Frecuencia | Variación pico a pico de A | Variación de D |
 |---|---:|---:|

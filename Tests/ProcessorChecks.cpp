@@ -230,6 +230,14 @@ int main(int argc,char** argv)
     check(std::abs(analysis.thdDb+59.9568)<1,"harmonic THD matches known synthetic reference");
     std::cout<<"Harmonic reference f0="<<analysis.frequency<<" THD="<<analysis.thdDb<<" THD+N="<<analysis.thdnDb<<"\n";
     check(std::abs(analysis.thdnDb-analysis.thdDb)<1,"noise-free THD+N agrees with known harmonic distortion");
+    {
+        auto worker=std::make_unique<ToneBoyHarmonicWorker>(); ToneBoyHarmonicResult asynchronous;
+        check(worker->submit(*testInput,*testOutput,48000,1),"harmonic worker accepts frame without waiting for analysis");
+        worker->waitForDiagnostic(); check(worker->take(asynchronous,1),"harmonic worker publishes completed frame");
+        check(asynchronous.status==analysis.status && std::abs(asynchronous.thdDb-analysis.thdDb)<1e-9 && std::abs(asynchronous.frequency-analysis.frequency)<1e-9,"worker matches harmonic reference without changing analysis maths");
+        check(worker->submit(*testInput,*testOutput,48000,2),"harmonic worker accepts subsequent frame"); worker->waitForDiagnostic();
+        check(!worker->take(asynchronous,3),"stale harmonic frame rejected after rate or mode reset");
+    }
     for(int n=0;n<8192;++n) (*testOutput)[size_t(n)]+=float(0.001*std::sin(tau*6000*n/48000));
     analysis=ToneBoyHarmonicAnalysis::analyse(*testInput,*testOutput,48000);
     check(analysis.thdnDb>analysis.thdDb+8,"THD+N includes nonharmonic residual energy");

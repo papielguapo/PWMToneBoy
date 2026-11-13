@@ -1,4 +1,4 @@
-# Guía de uso — PWM TONE BOY v1.4.1
+# Guía de uso — PWM TONE BOY v1.4.2
 
 **Creado por PAPIELGUAPO · Windows x64 · VST3 + Standalone**
 
@@ -12,7 +12,7 @@ Es un diseño original inspirado en comportamientos del STC-8. No se ha calibrad
 
 ## Descargar e instalar
 
-1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.4.1](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.4.1).
+1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.4.2](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.4.2).
 2. Descomprime el ZIP. Copia la carpeta completa `VST3/PWM TONE BOY.vst3` a `C:\Program Files\Common Files\VST3`. Cierra los programas que estén usando el plugin antes de sustituirlo. Windows puede solicitar permisos de administrador.
 3. Vuelve a escanear los plugins en tu DAW y carga **PWM TONE BOY**, fabricante **PAPIELGUAPO**.
 4. Para usarlo sin DAW, abre `Standalone/PWM TONE BOY.exe`.
@@ -190,3 +190,11 @@ El código del motor de audio se conserva respecto a v1.2.1. Se comprueban todas
 ## Título renovado (v1.4.1)
 
 PWM pasa de 22 a 32 puntos, con mayor peso visual y menor separación de TONE BOY. El resto del diseño, los ratios y releases por pasos, el circuito A con transferencia observada y D limpio se mantienen como en v1.4.0. No incluye EXP ni UP.
+
+## Recuperación del último analizador A (v1.4.2)
+
+Se recuperan DotMatrixLCDComponent y HarmonicAnalysisWorker del último estado anterior a la vuelta atrás (v1.6.0), adaptando la consulta del ratio a las siete posiciones originales. La estimación H1 y la curva A I/O+MODEL se conservan tal como estaban: sus irregularidades dependen de la señal de entrada y de la transferencia observada. No se inventa movimiento en bandas sin excitación ni se añaden osciladores gráficos.
+
+La versión recuperada calcula el ajuste armónico en un hilo del editor, descarta resultados de contextos anteriores y refresca la LCD a 30 Hz. Incluye la textura de puntos en caché. Se conserva el título PWM ampliado, D limpio, ratio/release por pasos y los 16 parámetros originales. No incluye EXP ni UP ni parámetros continuos. El circuito de audio A no requería otro cambio respecto a v1.4.0; esta recuperación trae el analizador posterior.
+
+Validación v1.4.2: 3.940 aserciones sin fallos; análisis armónico en segundo plano equivalente a la referencia y rechazo de resultados antiguos. Se comprobaron las referencias anteriores de A/D, silencio, seis vistas y tamaños de editor. Los archivos de análisis se compararon con v1.6.0: coinciden salvo la adaptación del acceso al ratio por pasos.
