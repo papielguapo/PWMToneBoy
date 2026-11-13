@@ -1,10 +1,12 @@
 # PWM TONE BOY — PAPIELGUAPO
 
-**v1.4.0 · A con variación real de audio; D digital limpio y auditoría documentada.**
+**v1.4.1 · PWM renovado sobre la base v1.4.0: A observado, D limpio y sin EXP/UP.**
+
+Título PWM más grande, sólido y junto a TONE BOY. El motor de audio y el comportamiento de Linear Analysis son los de v1.4.0.
 
 ![PWM TONE BOY](docs/images/PWM-TONE-BOY.png)
 
-- **[Descargar VST3 + Standalone — Windows x64](https://github.com/papielguapo/PWMToneBoy/releases/download/v1.4.0/PWM-TONE-BOY-Windows-x64.zip)**
+- **[Descargar VST3 + Standalone — Windows x64](https://github.com/papielguapo/PWMToneBoy/releases/download/v1.4.1/PWM-TONE-BOY-Windows-x64.zip)**
 - **[Guía completa en español](docs/GUIA-ES.md)**
 - **[Auditoría v1.4.0: hallazgos, correcciones, medidas y límites](docs/AUDITORIA-v1.4.0.md)**
 

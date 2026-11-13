@@ -87,8 +87,8 @@ void PWMToneBoyAudioProcessorEditor::paintPanel(juce::Graphics& g)
     if(p.parameter("bypass")<0.5f) { g.setColour(juce::Colour(0xfffa7482)); g.fillEllipse(65,171,3,2); }
     L::text(g,"BATTERY",{54,182,34,9},5.5f,juce::Colour(0xffe3dee4));
     L::text(g,"CLICK LCD TO CHANGE VIEW",{110,296,215,10},6,juce::Colour(0xffd6d2d8));
-    g.setColour(L::navy()); g.setFont(juce::Font(juce::FontOptions("Arial Black",22,juce::Font::bold))); g.drawText("PWM",53,326,72,27,juce::Justification::centredLeft);
-    g.setFont(juce::Font(juce::FontOptions("Arial",24,juce::Font::bold|juce::Font::italic))); g.drawText("TONE BOY",126,326,190,27,juce::Justification::centredLeft);
+    g.setColour(L::navy()); g.setFont(juce::Font(juce::FontOptions("Arial Black",32,juce::Font::bold))); g.drawText("PWM",53,323,90,34,juce::Justification::centredLeft);
+    g.setFont(juce::Font(juce::FontOptions("Arial",24,juce::Font::bold|juce::Font::italic))); g.drawText("TONE BOY",123,326,190,27,juce::Justification::centredLeft);
     L::text(g,"PWM THRESHOLD",{44,355,120,12},9);
     g.setColour(juce::Colour(0xffa6a59f)); g.fillRoundedRectangle(66,475,78,20,3); L::text(g,juce::String(p.parameter("threshold"),1)+" dB",{66,475,78,20},12,juce::Colour(0xff30323c));
     L::text(g,juce::String::fromUTF8("A — DECAY"),{294,350,80,11},8); L::text(g,juce::String::fromUTF8("B — RATIO"),{216,391,80,11},8);

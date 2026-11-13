@@ -1,4 +1,4 @@
-# Guía de uso — PWM TONE BOY v1.4.0
+# Guía de uso — PWM TONE BOY v1.4.1
 
 **Creado por PAPIELGUAPO · Windows x64 · VST3 + Standalone**
 
@@ -12,7 +12,7 @@ Es un diseño original inspirado en comportamientos del STC-8. No se ha calibrad
 
 ## Descargar e instalar
 
-1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.4.0](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.4.0).
+1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.4.1](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.4.1).
 2. Descomprime el ZIP. Copia la carpeta completa `VST3/PWM TONE BOY.vst3` a `C:\Program Files\Common Files\VST3`. Cierra los programas que estén usando el plugin antes de sustituirlo. Windows puede solicitar permisos de administrador.
 3. Vuelve a escanear los plugins en tu DAW y carga **PWM TONE BOY**, fabricante **PAPIELGUAPO**.
 4. Para usarlo sin DAW, abre `Standalone/PWM TONE BOY.exe`.
@@ -186,3 +186,7 @@ El código del motor de audio se conserva respecto a v1.2.1. Se comprueban todas
 
 
 **Resultado de la auditoría v1.4.0:** 3.935 aserciones con cero fallos y pluginval nivel 10 superado. La variación real de A se midió sin editor; se comprobó D estable, silencio, recuperación de NaN/Inf, continuidad de fase de A entre resets y equivalencia de bloques de 17/511 muestras. [Informe completo](AUDITORIA-v1.4.0.md).
+
+## Título renovado (v1.4.1)
+
+PWM pasa de 22 a 32 puntos, con mayor peso visual y menor separación de TONE BOY. El resto del diseño, los ratios y releases por pasos, el circuito A con transferencia observada y D limpio se mantienen como en v1.4.0. No incluye EXP ni UP.
