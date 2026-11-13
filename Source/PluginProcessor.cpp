@@ -3,7 +3,7 @@
 #include <cmath>
 
 namespace {
-constexpr std::array<const char*,14> ids{"threshold","ratioIndex","decayIndex","clockRate","dacCrush","eqIn","hpfIn","linkAutoGain","bypass","pad","kiMode","pdaMode","kWeightSc","phonesRawMode"};
+constexpr std::array<const char*,15> ids{"threshold","ratioIndex","decayIndex","clockRate","dacCrush","eqIn","hpfIn","linkAutoGain","bypass","pad","kiMode","pdaMode","kWeightSc","phonesRawMode","outputGain"};
 float db(float x) { return juce::Decibels::gainToDecibels(x, -100.0f); }
 float coefficient(double rate, float ms) { return std::exp(-1.0f / (float(rate) * ms * 0.001f)); }
 float mix(float a, float b, float t) { return a + (b-a)*t; }
@@ -17,11 +17,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout PWMToneBoyAudioProcessor::cr
     p.add(std::make_unique<juce::AudioParameterChoice>(ID{"ratioIndex",1},"Ratio",juce::StringArray{"1.0:1","2.0:1","3.0:1","5.0:1","10.0:1","20.0:1","INF"},2));
     p.add(std::make_unique<juce::AudioParameterChoice>(ID{"decayIndex",1},"Decay",juce::StringArray{"100ms","200ms","400ms","800ms","1.6s","3.2s"},1));
     p.add(std::make_unique<juce::AudioParameterFloat>(ID{"clockRate",1},"PWM Clock (kHz)",juce::NormalisableRange<float>(4,250,0.1f,0.55f),120.0f));
-    p.add(std::make_unique<juce::AudioParameterFloat>(ID{"dacCrush",1},"DAC Crush (%)",juce::NormalisableRange<float>(0,100,0.1f),42.0f));
+    p.add(std::make_unique<juce::AudioParameterFloat>(ID{"dacCrush",1},"DAC Crush (%)",juce::NormalisableRange<float>(0,100,0.1f),0.0f));
     const std::array<const char*,9> names{"Reconstruction EQ","Sidechain HPF","Stereo Link","Bypass","Input Pad","KI Harmonics","Program Dependent Attack","Hybrid Sidechain","Phones ProSound 4B"};
     const std::array<bool,9> defaults{true,false,true,false,false,true,true,true,false};
     for (size_t i=0;i<names.size();++i)
         p.add(std::make_unique<juce::AudioParameterBool>(ID{ids[i+5],1},names[i],defaults[i]));
+    p.add(std::make_unique<juce::AudioParameterFloat>(ID{"outputGain",1},"Output (dB)",juce::NormalisableRange<float>(-24,12,0.1f),0.0f));
     return p;
 }
 
@@ -57,6 +58,8 @@ void PWMToneBoyAudioProcessor::prepareToPlay(double rate,int block)
     scratch.setSize(2,maximumBlock); fileScratch.setSize(2,maximumBlock);
     fastAttack=coefficient(highRate,0.35f); snapAttack=coefficient(highRate,2.2f);
     fastRelease=coefficient(highRate,25); rmsCoefficient=coefficient(highRate,10);
+    memoryAttack=coefficient(highRate,80); memoryRelease=coefficient(highRate,1400);
+    limiterRelease=coefficient(highRate,60);
     for(auto& c:channels)
     {
         c=Channel{};
@@ -68,17 +71,17 @@ void PWMToneBoyAudioProcessor::prepareToPlay(double rate,int block)
     }
     auto init=[this](auto& s,float v){ s.reset(highRate,0.02); s.setCurrentAndTargetValue(v); };
     init(thresholdSmooth,parameter("threshold")); init(ratioSmooth,ratios[size_t(juce::jlimit(0,6,int(parameter("ratioIndex"))))]);
-    init(decaySmooth,decays[size_t(juce::jlimit(0,5,int(parameter("decayIndex"))))]); init(clockSmooth,parameter("clockRate")); init(crushSmooth,parameter("dacCrush")*0.01f);
+    init(decaySmooth,decays[size_t(juce::jlimit(0,5,int(parameter("decayIndex"))))]); init(clockSmooth,parameter("clockRate")); init(crushSmooth,0.0f);
     init(padSmooth,parameter("pad")>0.5f?0.25f:1); init(bypassSmooth,parameter("bypass"));
     init(eqSmooth,parameter("eqIn")); init(hpfSmooth,parameter("hpfIn")); init(linkSmooth,parameter("linkAutoGain"));
-    init(kiSmooth,parameter("kiMode")); init(pdaSmooth,parameter("pdaMode")); init(weightSmooth,parameter("kWeightSc")); init(rawSmooth,parameter("phonesRawMode"));
+    init(kiSmooth,parameter("kiMode")); init(pdaSmooth,parameter("pdaMode")); init(weightSmooth,parameter("kWeightSc")); init(rawSmooth,0.0f); outputSmooth.reset(sampleRate,0.02); outputSmooth.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(controls[14]->load()));
     fileTransport.prepareToPlay(maximumBlock,sampleRate);
     reset();
 }
 void PWMToneBoyAudioProcessor::reset()
 {
     if(oversampling) oversampling->reset();
-    for(auto& c:channels) { c.fast=c.slow=c.rms=c.previousSc=c.held=c.ceiling=c.quietSeconds=0; c.dryDelay.fill(0); c.dryPosition=0; c.scHpf.clear(); c.reconstruction.clear(); c.infra1.clear(); c.infra2.clear(); c.phoenix.clear(); }
+    for(auto& c:channels) { c.fast=c.slow=c.rms=c.previousSc=c.held=c.ceiling=c.quietSeconds=0; c.gainReduction=c.releaseMemory=c.peakHold=0; c.limiterGain=1; c.dryDelay.fill(0); c.dryPosition=0; c.scHpf.clear(); c.reconstruction.clear(); c.infra1.clear(); c.infra2.clear(); c.phoenix.clear(); }
     clockPhase=demoTime=0;
     // The SPSC diagnostic queue is intentionally not reset while an editor can consume it.
 }
@@ -93,16 +96,18 @@ float PWMToneBoyAudioProcessor::computeSCurveGainLin(float env,float threshold,f
 }
 float PWMToneBoyAudioProcessor::processCraneTriodeEven(float x,float slow,float k2,float grid) noexcept
 {
-    const float bias=slow*0.08f*k2, divisor=1+k2*0.85f;
-    const auto curve=[k2,grid](float v){ return v>=0?std::log1p(grid*v)/grid+k2*v*v:v+(k2*0.88f)*v*v; };
-    // Subtract only the transfer's zero-input bias: no independent DC source in silence.
-    return curve((x+bias)/divisor)-curve(bias/divisor);
+    juce::ignoreUnused(slow,grid);
+    // Unity small-signal slope and an exactly linear KI-off path. The bounded even
+    // term introduces gentle H2 without a half-wave logarithm or a DC generator.
+    const auto square=x*x;
+    return x+k2*square/(1.0f+0.25f*square);
 }
 float PWMToneBoyAudioProcessor::processPhoenixSapphireCeiling(float x,float& history) noexcept
 {
-    const auto ceiling=x/std::sqrt(1+0.65f*x*x);
-    const auto excess=juce::jlimit(0.0f,1.0f,(std::abs(ceiling)-0.55f)*2);
-    history=mix(ceiling,history,0.38f*excess);
+    // C2-continuous safety knee: unity through +/-0.98. Normal audio never
+    // passes through a permanently active saturator or waveform slew filter.
+    const auto magnitude=std::abs(x);
+    history=magnitude<=0.98f?x:std::copysign(0.98f+0.02f*std::tanh((magnitude-0.98f)/0.02f),x);
     return history;
 }
 void PWMToneBoyAudioProcessor::processBlock(juce::AudioBuffer<float>& b,juce::MidiBuffer& midi) { midi.clear(); process(b,false); }
@@ -114,10 +119,10 @@ void PWMToneBoyAudioProcessor::process(juce::AudioBuffer<float>& b,bool hostBypa
     if(!oversampling || b.getNumChannels()==0) return;
     if(isStandalone()) renderTestSource(b);
     thresholdSmooth.setTargetValue(controls[0]->load()); ratioSmooth.setTargetValue(ratios[size_t(juce::jlimit(0,6,int(controls[1]->load())))]);
-    decaySmooth.setTargetValue(decays[size_t(juce::jlimit(0,5,int(controls[2]->load())))]); clockSmooth.setTargetValue(controls[3]->load()); crushSmooth.setTargetValue(controls[4]->load()*0.01f);
+    decaySmooth.setTargetValue(decays[size_t(juce::jlimit(0,5,int(controls[2]->load())))]); clockSmooth.setTargetValue(controls[3]->load()); crushSmooth.setTargetValue(0.0f);
     eqSmooth.setTargetValue(controls[5]->load()); hpfSmooth.setTargetValue(controls[6]->load()); linkSmooth.setTargetValue(controls[7]->load());
     bypassSmooth.setTargetValue(hostBypass?1:controls[8]->load()); padSmooth.setTargetValue(controls[9]->load()>0.5f?0.25f:1);
-    kiSmooth.setTargetValue(controls[10]->load()); pdaSmooth.setTargetValue(controls[11]->load()); weightSmooth.setTargetValue(controls[12]->load()); rawSmooth.setTargetValue(controls[13]->load());
+    kiSmooth.setTargetValue(controls[10]->load()); pdaSmooth.setTargetValue(controls[11]->load()); weightSmooth.setTargetValue(controls[12]->load()); rawSmooth.setTargetValue(0.0f); outputSmooth.setTargetValue(juce::Decibels::decibelsToGain(controls[14]->load()));
     for(int n=0;n<b.getNumSamples();n+=maximumBlock) processChunk(b,n,juce::jmin(maximumBlock,b.getNumSamples()-n),hostBypass);
 }
 void PWMToneBoyAudioProcessor::processChunk(juce::AudioBuffer<float>& b,int start,int count,bool)
@@ -140,7 +145,7 @@ void PWMToneBoyAudioProcessor::processChunk(juce::AudioBuffer<float>& b,int star
     for(size_t n=0;n<high.getNumSamples();++n)
     {
         const auto threshold=thresholdSmooth.getNextValue(), ratio=ratioSmooth.getNextValue();
-        const auto release=coefficient(highRate,decaySmooth.getNextValue());
+        const auto decayMs=decaySmooth.getNextValue();
         const auto clock=clockSmooth.getNextValue()*1000, crush=crushSmooth.getNextValue(), pad=padSmooth.getNextValue();
         const auto eq=eqSmooth.getNextValue(), hpf=hpfSmooth.getNextValue(), link=linkSmooth.getNextValue();
         const auto kiOn=kiSmooth.getNextValue(), pda=pdaSmooth.getNextValue(), weight=weightSmooth.getNextValue(), raw=rawSmooth.getNextValue();
@@ -158,24 +163,36 @@ void PWMToneBoyAudioProcessor::processChunk(juce::AudioBuffer<float>& b,int star
             const auto emphasized=sc+0.65f*(sc-ch.previousSc); ch.previousSc=sc; sc=mix(sc,emphasized,weight);
             ch.rms=rmsCoefficient*ch.rms+(1-rmsCoefficient)*sc*sc;
             const auto det=mix(std::abs(sc),0.65f*std::abs(sc)+0.35f*std::sqrt(juce::jmax(0.0f,ch.rms)),weight);
-            const auto slope=juce::jlimit(0.0f,1.0f,(det-ch.fast)*4.5f);
-            const auto attack=mix(fastAttack,snapAttack,slope*pda);
+            // A-MOD-inspired coupling: the peak circuit SHORTENS the nominal
+            // attack near overload; it does not slow down a steep transient.
+            const auto predictedPeak=std::abs(x)*makeup*juce::Decibels::decibelsToGain(-ch.gainReduction);
+            const auto peakDemand=juce::jlimit(0.0f,1.0f,(predictedPeak-0.75f)/0.25f);
+            const auto attack=mix(snapAttack,fastAttack,peakDemand*pda);
             ch.fast=det+(ch.fast-det)*(det>ch.fast?attack:fastRelease);
+            const auto memoryTarget=juce::jlimit(0.0f,1.0f,ch.gainReduction/18.0f);
+            ch.releaseMemory=memoryTarget+(ch.releaseMemory-memoryTarget)*(memoryTarget>ch.releaseMemory?memoryAttack:memoryRelease);
+            const auto release=coefficient(highRate,decayMs*(1.0f+2.5f*ch.releaseMemory));
             ch.slow=det+(ch.slow-det)*(det>ch.slow?attack:release);
             const auto crest=juce::jlimit(0.0f,1.0f,(ch.fast-ch.slow)/(ch.fast+1.0e-5f));
-            const auto envelope=ch.fast*(0.35f+0.50f*crest)+ch.slow*(0.65f-0.50f*crest);
-            gain[c]=computeSCurveGainLin(envelope,threshold,ratio);
+            const auto slowWeight=juce::jlimit(0.25f,0.9f,0.45f+0.4f*ch.releaseMemory-0.2f*crest);
+            const auto envelope=mix(ch.fast,ch.slow,slowWeight);
+            const auto targetGr=-db(computeSCurveGainLin(envelope,threshold,ratio));
+            // Gain-domain ballistics reduce control ripple; stored program energy
+            // lengthens recovery after sustained compression, independently of DECAY.
+            const auto grRelease=coefficient(highRate,juce::jmax(35.0f,decayMs*0.30f)*(1.0f+3.0f*ch.releaseMemory));
+            ch.gainReduction=targetGr+(ch.gainReduction-targetGr)*(targetGr>ch.gainReduction?attack:grRelease);
+            gain[c]=juce::Decibels::decibelsToGain(-ch.gainReduction);
             gates[c]=juce::jlimit(0.0f,1.0f,ch.fast*ch.fast*196);
-            pdr=crest;
+            pdr=ch.releaseMemory;
         }
         if(nc==1) gain[1]=gain[0];
         const auto mean=(gain[0]+gain[1])*0.5f;
         ToneBoyScopeFrame frame;
+        float postMakeup[2]{};
         for(int c=0;c<2;++c)
         {
             auto& ch=channels[size_t(c)]; const auto g=mix(gain[c],mean,link*0.85f);
-            const auto grDrive=1+(1-g)*mix(0.35f,1.45f,kiOn);
-            const auto k2=crush*0.30f*grDrive*gates[c];
+            const auto k2=kiOn*(0.008f+0.012f*(1-g))*gates[c];
             auto x=processCraneTriodeEven(input[c]*g,ch.slow,k2,1+crush*1.8f);
             if(latch) ch.held=x;
             x=mix(x,ch.held,mix(crush,1.0f,raw));
@@ -187,16 +204,33 @@ void PWMToneBoyAudioProcessor::processChunk(juce::AudioBuffer<float>& b,int star
             const auto reconstructed=ch.reconstruction.tick(dac);
             const auto infra=ch.infra2.tick(ch.infra1.tick(reconstructed));
             const auto contour=ch.phoenix.tick(infra);
-            auto out=processPhoenixSapphireCeiling(contour*makeup,ch.ceiling);
-            // Flush only inaudible settled tails; no dither, random noise or DC injection.
-            if(std::abs(input[c])<1e-12f && std::abs(out)<1e-12f) out=0;
-            high.setSample(c,int(n),out);
-            outPeak=juce::jmax(outPeak,std::abs(out)); maxReduction=juce::jmax(maxReduction,-db(g));
+            postMakeup[c]=contour*makeup;
             if(c==0)
             {
                 const float pulse=clockPhase < double(juce::jlimit(0.05f,0.95f,0.5f+input[c]*0.45f)) ? 1.0f : -1.0f;
-                frame={reconstructed,infra,dac,pulse,-db(g),out}; gate=gates[c]; ki=k2;
+                frame={reconstructed,infra,dac,pulse,-db(g),0}; gate=gates[c]; ki=k2;
             }
+        }
+        const auto maximumPeak=juce::jmax(std::abs(postMakeup[0]),std::abs(postMakeup[nc-1]));
+        for(int c=0;c<2;++c)
+        {
+            auto& ch=channels[size_t(c)];
+            const auto level=mix(std::abs(postMakeup[c]),maximumPeak,link);
+            const auto requiredGain=level>0.95f?0.95f/level:1.0f;
+            if(requiredGain<ch.limiterGain) { ch.limiterGain=requiredGain; ch.peakHold=float(highRate*0.0005); }
+            else if(ch.peakHold>0) ch.peakHold-=1;
+            else ch.limiterGain=requiredGain+(ch.limiterGain-requiredGain)*limiterRelease;
+        }
+        const auto commonLimiter=juce::jmin(channels[0].limiterGain,channels[size_t(nc-1)].limiterGain);
+        for(int c=0;c<2;++c)
+        {
+            auto& ch=channels[size_t(c)];
+            const auto limiting=mix(ch.limiterGain,commonLimiter,link);
+            auto out=processPhoenixSapphireCeiling(postMakeup[c]*limiting,ch.ceiling);
+            if(std::abs(input[c])<1e-12f && std::abs(out)<1e-12f) out=0;
+            high.setSample(c,int(n),out);
+            maxReduction=juce::jmax(maxReduction,-db(mix(gain[c],mean,link*0.85f)*limiting));
+            if(c==0) { frame.output=out; frame.reduction-=db(limiting); }
         }
         // One ramp value per base sample, stored in scratch only after upsampling has consumed it.
         if((n&3u)==3u) scratch.setSample(0,int(n/4),bypass);
@@ -207,10 +241,14 @@ void PWMToneBoyAudioProcessor::processChunk(juce::AudioBuffer<float>& b,int star
     for(int n=0;n<count;++n) fileScratch.setSample(1,n,scratch.getSample(0,n));
     oversampling->processSamplesDown(base);
     outPeak=0;
-    for(int n=0;n<count;++n) for(int c=0;c<nc;++c)
+    for(int n=0;n<count;++n)
     {
-        const float output=mix(scratch.getSample(c,n),b.getSample(c,start+n),fileScratch.getSample(1,n));
+      const float outputGain=outputSmooth.getNextValue();
+      for(int c=0;c<nc;++c)
+      {
+        const float output=mix(scratch.getSample(c,n)*outputGain,b.getSample(c,start+n),fileScratch.getSample(1,n));
         b.setSample(c,start+n,output); outPeak=juce::jmax(outPeak,std::abs(output));
+    }
     }
     inputDb.store(db(inPeak)); outputDb.store(db(outPeak)); reductionDb.store(maxReduction); gateMeter.store(gate); kiMeter.store(ki); pdrMeter.store(pdr);
 }

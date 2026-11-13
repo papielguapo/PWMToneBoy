@@ -20,13 +20,56 @@ void finiteBuffer(const juce::AudioBuffer<float>& b)
     for(int c=0;c<b.getNumChannels();++c) for(int n=0;n<b.getNumSamples();++n) { const auto x=b.getSample(c,n); finite &= std::isfinite(x); bounded &= std::abs(x)<2.0f; }
     check(finite,"finite audio"); check(bounded,"bounded audio");
 }
+struct Spectrum { double thdDb{}, h2Db{}, h3Db{}, imdDb{}; };
+Spectrum measure(bool ki, bool compressed=false, bool twoTone=false, float frequency=1000)
+{
+    auto processor=std::make_unique<PWMToneBoyAudioProcessor>();
+    set(*processor,"kiMode",ki?1.0f:0.0f); set(*processor,"eqIn",0);
+    set(*processor,"ratioIndex",compressed?2.0f:0.0f); set(*processor,"threshold",compressed?-18.0f:0.0f);
+    processor->prepareToPlay(48000,256);
+    juce::AudioBuffer<float> buffer(2,256); juce::MidiBuffer midi;
+    std::array<double,13> real{},imag{}; double imReal=0,imImag=0;
+    const double pi=juce::MathConstants<double>::twoPi;
+    for(int start=0;start<96000;start+=256)
+    {
+        const int count=juce::jmin(256,96000-start); buffer.setSize(2,count,false,false,true);
+        for(int n=0;n<count;++n)
+        {
+            const double t=double(start+n)/48000;
+            const float value=twoTone?float(0.15*(std::sin(pi*5000*t)+std::sin(pi*6000*t))):float((compressed?0.5:0.2)*std::sin(pi*frequency*t));
+            buffer.setSample(0,n,value); buffer.setSample(1,n,value);
+        }
+        processor->processBlock(buffer,midi);
+        for(int n=0;n<count;++n) if(start+n>=48000)
+        {
+            const double t=double(start+n)/48000, value=buffer.getSample(0,n);
+            for(int h=1;h<=12;++h) { const double angle=pi*(twoTone?5000:frequency)*h*t; real[size_t(h)]+=value*std::cos(angle); imag[size_t(h)]+=value*std::sin(angle); }
+            imReal+=value*std::cos(pi*1000*t); imImag+=value*std::sin(pi*1000*t);
+        }
+    }
+    const auto power=[&](int h){return real[size_t(h)]*real[size_t(h)]+imag[size_t(h)]*imag[size_t(h)];};
+    const double fundamental=power(1); double distortion=0;
+    for(int h=2;h<=12;++h) if(double(h)*frequency<24000 && !twoTone) distortion+=power(h);
+    const auto relativeDb=[&](double energy){return 10*std::log10(juce::jmax(1.0e-20,energy/fundamental));};
+    return {relativeDb(distortion),relativeDb(power(2)),relativeDb(power(3)),relativeDb(imReal*imReal+imImag*imImag)};
+}
+float recovery(bool sustained)
+{
+    auto processor=std::make_unique<PWMToneBoyAudioProcessor>(); set(*processor,"decayIndex",1);
+    processor->prepareToPlay(48000,256); juce::AudioBuffer<float> buffer(2,256); juce::MidiBuffer midi;
+    const int duration=sustained?96000:960;
+    for(int start=0;start<duration;start+=256) { buffer.clear(); for(int c=0;c<2;++c) for(int n=0;n<juce::jmin(256,duration-start);++n) buffer.setSample(c,n,0.6f); processor->processBlock(buffer,midi); }
+    for(int n=0;n<38;++n) { buffer.clear(); processor->processBlock(buffer,midi); }
+    return processor->reductionDb.load();
+}
+
 }
 int main(int argc,char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juce;
     juce::MidiBuffer midi;
     PWMToneBoyAudioProcessor p;
-    check(p.getParameters().size()==14,"exactly fourteen parameters");
+    check(p.getParameters().size()==15,"fifteen parameters including output");
     check(std::abs(p.parameter("threshold")+18)<0.001f && p.parameter("ratioIndex")==2 && p.parameter("decayIndex")==1,"parameter defaults");
     check(p.getBypassParameter()==p.apvts.getParameter("bypass"),"host bypass mapping");
     for(float r:PWMToneBoyAudioProcessor::ratios)
@@ -85,6 +128,28 @@ int main(int argc,char** argv)
     demo.prepareToPlay(48000,256);
     for(int source:{1,2,3}) { demo.setTestSource(source); juce::AudioBuffer<float> audio(2,256); audio.clear(); demo.processBlock(audio,midi); check(audio.getMagnitude(0,256)>0,"standalone loop produces audio"); finiteBuffer(audio); }
     check(!demo.loadTestFile(juce::File::getCurrentWorkingDirectory().getChildFile("missing-test-file.wav")),"unreadable file handled");
+    auto neutralPtr=std::make_unique<PWMToneBoyAudioProcessor>(), legacyPtr=std::make_unique<PWMToneBoyAudioProcessor>(), quieterPtr=std::make_unique<PWMToneBoyAudioProcessor>(); auto& neutral=*neutralPtr; auto& legacy=*legacyPtr; auto& quieter=*quieterPtr;
+    set(legacy,"dacCrush",100); set(legacy,"phonesRawMode",1); set(quieter,"outputGain",-6);
+    neutral.prepareToPlay(48000,256); legacy.prepareToPlay(48000,256); quieter.prepareToPlay(48000,256);
+    juce::AudioBuffer<float> a(2,256), b(2,256), q(2,256);
+    for(int c=0;c<2;++c) for(int n=0;n<256;++n) a.setSample(c,n,0.2f*std::sin(float(n)*0.07f));
+    b.makeCopyOf(a); q.makeCopyOf(a);
+    neutral.processBlock(a,midi); legacy.processBlock(b,midi); quieter.processBlock(q,midi);
+    bool identical=true; for(int n=0;n<256;++n) identical &= a.getSample(0,n)==b.getSample(0,n);
+    check(identical,"legacy DAC and ProSound automation cannot enable processing");
+    check(std::abs(q.getMagnitude(0,256)/a.getMagnitude(0,256)-juce::Decibels::decibelsToGain(-6.0f))<0.001f,"output trim applies calibrated dB gain");
+    check(PWMToneBoyAudioProcessor::processCraneTriodeEven(0.4f,0.2f,0,1)==0.4f,"KI-off transfer is exactly linear");
+    float ceilingState=0;
+    check(PWMToneBoyAudioProcessor::processPhoenixSapphireCeiling(0.8f,ceilingState)==0.8f,"safety ceiling transparent below knee");
+    check(PWMToneBoyAudioProcessor::processPhoenixSapphireCeiling(10.0f,ceilingState)<=1.0f,"safety ceiling bounded");
+    const auto clean=measure(false), coloured=measure(true), compressed=measure(false,true), bass=measure(false,true,false,50), imdClean=measure(false,false,true), imdKi=measure(true,false,true);
+    check(clean.thdDb < -80,"clean path THD below -80 dB at 1 kHz/-14 dBFS");
+    check(coloured.h2Db>clean.h2Db+20 && coloured.h2Db>coloured.h3Db+12,"KI introduces predominantly second harmonic");
+    check(compressed.thdDb < -35,"moderate compression avoids excessive harmonic distortion");
+    check(imdClean.imdDb < -80 && imdKi.imdDb < -40,"two-tone intermodulation remains controlled");
+    const float shortRecovery=recovery(false), longRecovery=recovery(true);
+    check(longRecovery>shortRecovery+0.5f,"sustained program leaves longer release memory");
+    std::cout<<"THD dB: clean="<<clean.thdDb<<", KI="<<coloured.thdDb<<", compressed="<<compressed.thdDb<<", bass50Hz="<<bass.thdDb<<"; KI H2/H3="<<coloured.h2Db<<"/"<<coloured.h3Db<<"; IMD 5+6kHz="<<imdClean.imdDb<<"/"<<imdKi.imdDb<<"; recovery short/long="<<shortRecovery<<"/"<<longRecovery<<" dB\n";
     // Exercise actual editor rendering at minimum, reference and maximum sizes.
     for(auto* param:restored.getParameters()) param->setValueNotifyingHost(param->getDefaultValue());
     std::unique_ptr<juce::AudioProcessorEditor> editor(restored.createEditor());

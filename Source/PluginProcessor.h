@@ -58,6 +58,7 @@ private:
     {
         Biquad scHpf, reconstruction, infra1, infra2, phoenix;
         float fast{}, slow{}, rms{}, previousSc{}, held{}, ceiling{}, quietSeconds{};
+        float gainReduction{}, releaseMemory{}, limiterGain{1.0f}, peakHold{};
         std::array<float, 512> dryDelay{};
         int dryPosition{};
     };
@@ -67,12 +68,13 @@ private:
     std::array<Channel, 2> channels;
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
     juce::AudioBuffer<float> scratch;
-    std::array<std::atomic<float>*,14> controls{};
+    std::array<std::atomic<float>*,15> controls{};
+    juce::SmoothedValue<float> outputSmooth;
     juce::SmoothedValue<float> thresholdSmooth, ratioSmooth, decaySmooth, clockSmooth, crushSmooth, padSmooth, bypassSmooth;
     juce::SmoothedValue<float> eqSmooth, hpfSmooth, linkSmooth, kiSmooth, pdaSmooth, weightSmooth, rawSmooth;
     double sampleRate{44100}, highRate{176400}, clockPhase{}, demoTime{};
     int maximumBlock{512}, latency{}, scopeDivider{};
-    float fastAttack{}, snapAttack{}, fastRelease{}, rmsCoefficient{};
+    float fastAttack{}, snapAttack{}, fastRelease{}, rmsCoefficient{}, memoryAttack{}, memoryRelease{}, limiterRelease{};
     juce::AbstractFifo scopeFifo{8192};
     std::array<ToneBoyScopeFrame,8192> scopeStorage{};
     juce::AudioFormatManager formatManager;

@@ -1,10 +1,37 @@
-# PWM TONE BOY
+# PWM TONE BOY — PAPIELGUAPO
 
-Plugin de dinámica y color PWM/DAC, C++20 y JUCE 8.0.4. Formatos Windows x64 VST3 y Standalone. Todos los controles de audio tienen automatización y persistencia mediante APVTS.
+Version 1.0.1. Windows x64 VST3 and Standalone, JUCE 8.0.4 / C++20.
 
-## Compilar
+## Current behavior
 
-Requisitos: CMake 3.22+, un compilador C++20 y los componentes de desarrollo C++/Windows SDK de Visual Studio. JUCE se busca como paquete local versión 8 y, si no está disponible, FetchContent descarga la etiqueta 8.0.4. En esta entrega se utilizó JUCE 8.0.4 y Visual Studio 2026 x64.
+- Resizable vector editor, 336–840 px wide (80–200%), with proportional hit targets and saved window width.
+- OUTPUT replaces START/DAC: -24 to +12 dB, initially 0 dB, smoothed over 20 ms, after peak protection. Auto-Gain remains active in the wet path.
+- ProSound and DAC are disabled in DSP, including automation and older saved states. Their original parameter IDs remain for session compatibility. The jack, ProSound and AUTO-GAIN text/LED, and upper/lower rack legends have been removed. Other controls and positions are retained.
+- Manufacturer: PAPIELGUAPO. Existing plugin identifiers are retained.
+
+## Dynamics revision
+
+This is an original design inspired by STC-8 behavior, not a measured hardware emulation. No hardware reference or capture set was available. Attack/release coefficients and harmonic levels are engineering choices, not recovered Crane Song circuitry.
+
+The processor runs at 4x with integer latency compensation (6 samples). The detector combines peak and RMS with optional sidechain HPF/presence emphasis. Program memory has an 80 ms charge and 1.4 s discharge; sustained gain reduction lengthens the slow-envelope and gain-domain release. The gain curve is continuous, with a ratio-dependent soft knee. LINK retains the 85% shared compressor gain and links peak protection fully when enabled.
+
+PDA now shortens the nominal 2.2 ms attack toward 0.35 ms when the predicted output approaches overload. This is an A-MOD-inspired interaction; the peak protector and compressor operate together rather than representing attack modification as transient slowing.
+
+KI OFF uses a unity waveshaper. KI ON adds a small bounded even function, x + k2*x*x/(1+0.25*x*x), with k2 dependent on activity and compression. There is no positive-half-cycle logarithm and no independent bias/noise source. This implementation does not claim to reproduce the hardware's complete KI sidechain changes.
+
+A dynamic peak protector acts near -0.45 dBFS, with a 0.5 ms hold and 60 ms recovery. A C2-continuous safety curve is exactly linear through +/-0.98 and approaches +/-1 above that. These limits are before OUTPUT; positive output trim can exceed 0 dBFS. The existing reconstruction filter, fourth-order 18 Hz high-pass, and +0.85 dB/52 Hz contour remain. Thus, "linear KI OFF" does not mean a flat frequency response or dry null across those filters.
+
+Auto-Gain: (-threshold * (1 - 1/ratio)) * 0.54 dB. Bypass crossfades to a dry signal delayed by the declared latency. Diagnostics use a bounded SPSC queue; graphics and FFT run outside the audio callback. No buffers are allocated in normal DSP processing. The optional Standalone file player uses JUCE's transport.
+
+## Controls and compatibility
+
+Threshold: -42 to 0 dB; ratio: 1/2/3/5/10/20/100; decay: 100/200/400/800/1600/3200 ms. EQ, HPF SC, LINK, BYPASS, PAD, KI, PDA and H-SC remain available. The old clock control/diagnostic view is retained, but sample-and-hold and quantization have no audible effect while the DAC path is disabled. The old dacCrush and phonesRawMode parameters are retained but ignored by DSP. outputGain is appended as a new parameter, preserving old IDs.
+
+The Standalone offers Drums, 808 Bass and Chiptune test loops and looping WAV/AIFF playback. JUCE Options selects the audio device. Input is muted by default by the Standalone wrapper; internal test loops remain available.
+
+## Build and checks
+
+Install CMake 3.22+ and Visual Studio C++/Windows SDK. JUCE 8 is found locally or fetched from the 8.0.4 release.
 
 ```powershell
 cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -12,64 +39,23 @@ cmake --build build --config Release --parallel
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-Visual Studio utiliza `--config Release`; `CMAKE_BUILD_TYPE` se aplica a generadores de configuración única. Las compilaciones Release utilizan `/O2 /fp:fast` en MSVC y `-O3` en GCC/Clang.
+Visual Studio selects Release with --config. Release uses MSVC /O2 /fp:fast, or -O3 on GCC/Clang.
 
-Resultados:
+Artifacts:
 
-* `build/PWMToneBoy_artefacts/Release/VST3/PWM TONE BOY.vst3` (copiar la carpeta completa del bundle al directorio VST3 elegido).
-* `build/PWMToneBoy_artefacts/Release/Standalone/PWM TONE BOY.exe`.
-
-La aplicación y el plugin no se instalan automáticamente. El árbol `build/_deps/juce-src` contiene el código y la licencia de JUCE descargados por CMake. Para reconstruir desde el ZIP de fuentes, se vuelven a descargar las dependencias.
-
-## Uso
-
-Arrastrar la esquina inferior derecha redimensiona toda la interfaz entre el 80% y el 200%, conservando proporciones y coordenadas de interacción. El tamaño de referencia del plugin es 420 × 680; el Standalone añade 32 píxeles para los controles de prueba. Se recuerda el ancho junto con el estado del plugin. La escala DPI del sistema se suma a esta escala lógica.
-
-Arrastrar una perilla cambia su parámetro; doble clic recupera el valor por defecto. Las perillas B/RATIO y A/DECAY tienen posiciones discretas. Las ruedas del ratón están deshabilitadas para evitar modificaciones accidentales. Mantener el ratón sobre un control muestra ayuda y el arrastre muestra su valor.
-
-Pulsar la LCD alterna FFT, triodo/filtro de 18 Hz, rodilla/PDR y DAC/PWM. Los medidores IN/GR/OUT permanecen visibles. LINK controla el enlace estéreo; el Auto-Gain permanece siempre activo en la señal procesada. PHONES conmuta a los doce códigos del DAC raw y enciende el anillo verde.
-
-En Standalone, elegir Drums, 808 Bass o Chiptune produce un bucle interno. WAV/AIFF abre un archivo y lo reproduce en bucle. `Audio input` vuelve a la entrada del dispositivo. El menú Options del contenedor JUCE permite seleccionar el dispositivo de audio; JUCE silencia inicialmente la entrada para evitar realimentación, sin silenciar los bucles internos.
-
-## Parámetros
-
-| ID | Rango / opciones | Inicial |
-|---|---|---|
-| threshold | −42 a 0 dB, 0.1 dB | −18 dB |
-| ratioIndex | 1, 2, 3, 5, 10, 20, INF (100 internamente) | 3:1 |
-| decayIndex | 100, 200, 400, 800, 1600, 3200 ms | 200 ms |
-| clockRate | 4–250 kHz | 120 kHz |
-| dacCrush | 0–100% | 42% |
-| eqIn | Reconstrucción 11.2 kHz / 20 kHz | Sí |
-| hpfIn | HPF del sidechain a 90 Hz | No |
-| linkAutoGain | 85% de enlace estéreo | Sí |
-| bypass | Bypass con compensación de latencia | No |
-| pad | Entrada ×0.25 | No |
-| kiMode | Segundo armónico ligado a GR | Sí |
-| pdaMode | Ataque 0.35–2.2 ms | Sí |
-| kWeightSc | Detector híbrido con preénfasis | Sí |
-| phonesRawMode | DAC de doce códigos | No |
-
-## Implementación y decisiones de DSP
-
-La cadena se procesa muestra a muestra a 4× mediante oversampling IIR de JUCE con latencia entera declarada al host. Detector, PDA, PDR de doble envolvente, rodilla suave y enlace preceden al triodo asimétrico, sample-and-hold y DAC. Siguen la reconstrucción, los dos HPF de 18 Hz con Q 0.54119610/1.30656296, el peaking de 52 Hz y el techo Sapphire. No hay generador de ruido ni dither.
-
-El Auto-Gain sigue `(-threshold * (1 - 1/ratio)) * 0.54` dB. Los controles y conmutadores interpolan durante 20 ms para reducir discontinuidades. El bypass cruza a una señal seca retrasada exactamente la latencia declarada, manteniendo el motor activo para evitar estados obsoletos al volver.
-
-Se resta la polarización de entrada cero del triodo para evitar una fuente de DC independiente. El DAC utiliza códigos asimétricos mid-tread, incluyendo cero exacto: 16 códigos de −8/8 a +7/8, o 12 códigos de −6/6 a +5/6. La mezcla de cuantización depende de la puerta cuadrática para conservar colas suaves. En PHONES la mezcla raw pasa al 100%, conservando esa puerta y los filtros de protección. A frecuencias de reloj superiores a la frecuencia interna de proceso, el sample-and-hold actualiza en cada muestra interna; un reloj más rápido equivale al límite transparente de esta implementación a 4×.
-
-La telemetría usa una cola SPSC acotada sin bloqueo; la FFT y los gráficos se calculan en el hilo de la interfaz a 60 Hz. No se reservan buffers ni se calculan FFT en el callback DSP. El reproductor opcional de archivos utiliza el transporte de JUCE.
-
-La skin se dibuja con vectores a partir de las medidas y colores suministrados. Se usa Arial Black/Arial con fallback del sistema para las letras; no se ha suministrado una imagen de referencia ni la fuente Inter Black, por lo que no se afirma equivalencia visual píxel a píxel. Tampoco se afirma emulación medida de aparatos analógicos originales.
-
-## Verificación
-
-`PWMToneBoyChecks` verifica los parámetros, rodilla monotónica y continua, silencio exacto desde reposo, audio finito y acotado, cambios de conmutadores, frecuencias 32/44.1/48/96/192 kHz, bloques de 1 a 4097 muestras, bypass alineado, mono/estéreo, reset, estado inválido y restauración. También renderiza el editor en 336, 420, 630 y 840 píxeles de ancho.
+- build/PWMToneBoy_artefacts/Release/VST3/PWM TONE BOY.vst3 (copy the complete bundle).
+- build/PWMToneBoy_artefacts/Release/Standalone/PWM TONE BOY.exe.
 
 ```powershell
 & 'build/PWMToneBoyChecks_artefacts/Release/PWMToneBoyChecks.exe' QA
 ```
 
-Las pruebas automatizadas y las capturas reducen el riesgo de fallos; la compatibilidad final debe comprobarse en el DAW y hardware de destino.
+3,858 checks passed: parameter/state handling, corrupt-state rejection, continuous monotonic knee, exact silence/reset, finite/bounded output at 32/44.1/48/96/192 kHz, 1–4097 sample blocks, bypass alignment, mono/stereo, disabled legacy DSP, output calibration, long-tail settling, standalone loops and editor render/hit targets at four scales. pluginval strictness 10 passed with seed 1472.
 
-Resultado de esta entrega (13 de noviembre de 2026): compilación Release x64 de ambos formatos, 3.848 comprobaciones con cero fallos, latencia de 6 muestras y validación VST3 con pluginval al nivel 10. Se comprobó la apertura del Standalone. Las capturas de `QA/` muestran las escalas 80%, 100%, 150% y 200%; las pruebas también verifican que el área de interacción de la perilla principal coincide con su dibujo en las cuatro escalas. Los registros completos de pluginval y las comprobaciones están en `QA/`.
+Spectral tests use coherent 48 kHz signals, one second settling followed by one second measurement. Single tones use 0.2 peak amplitude at unity ratio, or 0.5 peak amplitude with 3:1 / -18 dB threshold. THD sums harmonics 2–12 below Nyquist. These are steady-state digital tests, not hardware comparisons or transient-distortion measurements.
+
+Measured results: 1 kHz KI THD -62.03 dB (about 0.079%), H3 below H2; KI-off THD below -100 dB in the 1 kHz test. Compressed 50 Hz THD -72.67 dB. With 5+6 kHz tones at 0.15 peak each, the 1 kHz difference product is -58.54 dBc with KI and below -100 dBc without KI. The 1 kHz clean/steady compressed measurements approach the numerical floor of this test and are not analog performance specifications.
+
+After 200 ms of silence, a short versus sustained test leaves approximately 4.98 versus 6.36 dB reduction, confirming program-dependent recovery. QA/ contains actual test logs and editor snapshots. Final compatibility and sonic preference should be checked in the intended DAW and on real program material.
+
+The skin is a vector interpretation of the written specification; Arial/Arial Black replace the unavailable Inter asset. JUCE's source and licensing are in build/_deps/juce-src after configuration.

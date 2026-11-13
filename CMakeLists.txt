@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(PWMToneBoy VERSION 1.0.0 LANGUAGES C CXX)
+project(PWMToneBoy VERSION 1.0.1 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -10,7 +10,7 @@ if(NOT JUCE_FOUND)
     FetchContent_MakeAvailable(JUCE)
 endif()
 juce_add_plugin(PWMToneBoy
-    COMPANY_NAME "Audio Devices"
+    COMPANY_NAME "PAPIELGUAPO"
     BUNDLE_ID com.audiodevices.pwmtoneboy
     PLUGIN_MANUFACTURER_CODE AuDv
     PLUGIN_CODE Pwtb
