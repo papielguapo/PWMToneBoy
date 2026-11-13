@@ -3,6 +3,8 @@
 #include <iostream>
 #include <cmath>
 #include <cstdlib>
+#include <bit>
+#include <limits>
 
 namespace {
 int failures=0, checks=0;
@@ -58,6 +60,45 @@ Spectrum measure(bool ki, bool compressed=false, bool twoTone=false, float frequ
     const auto relativeDb=[&](double energy){return 10*std::log10(juce::jmax(1.0e-20,energy/fundamental));};
     return {relativeDb(distortion),relativeDb(power(2)),relativeDb(power(3)),relativeDb(imReal*imReal+imImag*imImag),20*std::log10(std::sqrt(fundamental)*2/48000/peak),processor->linearResponseDb(frequency)};
 }
+struct DriftMeasurement { double spanDb{},residualDb{}; };
+DriftMeasurement measureDrift(bool analog,double frequency)
+{
+    auto processor=std::make_unique<PWMToneBoyAudioProcessor>();
+    set(*processor,"analogMode",analog?1.0f:0.0f); set(*processor,"kiMode",0); set(*processor,"ratioIndex",0); set(*processor,"threshold",0); set(*processor,"eqIn",0);
+    processor->prepareToPlay(48000,256); juce::AudioBuffer<float> audio(2,6000); juce::MidiBuffer midi;
+    std::vector<float> captured; captured.reserve(192000);
+    double minimum=100,maximum=-100; const double tau=juce::MathConstants<double>::twoPi;
+    for(int window=0;window<48;++window)
+    {
+        for(int n=0;n<6000;++n) { const auto value=float(0.2*std::sin(tau*frequency*(window*6000+n)/48000)); for(int c=0;c<2;++c) audio.setSample(c,n,value); }
+        processor->processBlock(audio,midi);
+        if(window>=16)
+        {
+            double re=0,im=0;
+            for(int n=0;n<6000;++n) { const auto value=audio.getSample(0,n); const double phase=tau*frequency*(window*6000+n)/48000; re+=value*std::cos(phase); im+=value*std::sin(phase); captured.push_back(value); }
+            const double gain=20*std::log10(std::sqrt(re*re+im*im)*2/6000/0.2); minimum=std::min(minimum,gain); maximum=std::max(maximum,gain);
+        }
+    }
+    double re=0,im=0,mean=0;
+    for(size_t n=0;n<captured.size();++n) { const double phase=tau*frequency*double(n)/48000; re+=captured[n]*std::cos(phase); im+=captured[n]*std::sin(phase); mean+=captured[n]; }
+    re*=2/double(captured.size()); im*=2/double(captured.size()); mean/=double(captured.size());
+    double error=0;
+    for(size_t n=0;n<captured.size();++n) { const double phase=tau*frequency*double(n)/48000; const double residual=captured[n]-mean-re*std::cos(phase)-im*std::sin(phase); error+=residual*residual; }
+    return {maximum-minimum,10*std::log10(std::max(1e-20,error/(double(captured.size())*(re*re+im*im)*0.5)))};
+}
+std::vector<float> renderPartition(bool analog,int blockSize)
+{
+    auto processor=std::make_unique<PWMToneBoyAudioProcessor>(); set(*processor,"analogMode",analog?1.0f:0.0f); processor->prepareToPlay(48000,blockSize);
+    juce::AudioBuffer<float> audio(2,blockSize); juce::MidiBuffer midi; std::vector<float> result; result.reserve(16384);
+    for(int start=0;start<16384;start+=blockSize)
+    {
+        const int count=std::min(blockSize,16384-start); audio.setSize(2,count,false,false,true);
+        for(int n=0;n<count;++n) for(int c=0;c<2;++c) audio.setSample(c,n,float(0.08*std::sin((start+n)*0.009)+0.15*std::sin((start+n)*0.13)));
+        processor->processBlock(audio,midi); for(int n=0;n<count;++n) result.push_back(audio.getSample(0,n));
+    }
+    return result;
+}
+
 float recovery(bool sustained)
 {
     auto processor=std::make_unique<PWMToneBoyAudioProcessor>(); set(*processor,"decayIndex",1);
@@ -239,6 +280,46 @@ int main(int argc,char** argv)
     check(transferTest->estimate(transferFrequency,48000).confidence==0,"incoherent transfer is rejected");
     referenceComplex->fill(0); resultComplex->fill(0); transferTest->update(*referenceComplex,*resultComplex);
     check(transferTest->estimate(transferFrequency,48000).confidence==0,"silence cannot produce an observed curve wobble");
+
+    bool bounds=true;
+    for(int step=0;step<1000;++step) { const auto drift=PWMToneBoyAudioProcessor::analogVariation(step*0.013,step*0.017,1); bounds &= std::abs(drift.lowDb)<=0.025001f && std::abs(drift.highDb)<=0.020001f && std::abs(drift.gainDb)<=0.006001f; }
+    check(bounds,"intentional A audio-coefficient variation stays within documented bounds");
+    const auto noActivity=PWMToneBoyAudioProcessor::analogVariation(0.2,0.7,0);
+    check(std::abs(noActivity.lowDb)<=0.015001f && std::abs(noActivity.highDb)<=0.012001f && std::abs(noActivity.gainDb)<=0.003601f,"resting coefficient drift stays bounded without injecting audio");
+    for(double frequency:{64.0,1000.0,8000.0})
+    {
+        const auto a=measureDrift(true,frequency),d=measureDrift(false,frequency);
+        std::cout<<"Headless "<<frequency<<"Hz: A variation="<<a.spanDb<<"dB residual="<<a.residualDb<<"dBc; D variation="<<d.spanDb<<"dB residual="<<d.residualDb<<"dBc\n";
+        check(a.spanDb>0.004 && a.spanDb<0.10,"A changes the actual audio response with no editor open");
+        check(a.residualDb < -45,"A modulation plus harmonics remain bounded in the audit sine test");
+        check(d.spanDb<0.0001 && d.residualDb < -100,"D is not modulated by the A drift clock");
+    }
+    for(bool a:{false,true})
+    {
+        const auto fine=renderPartition(a,17),coarse=renderPartition(a,511); float difference=0;
+        for(size_t n=0;n<fine.size();++n) difference=std::max(difference,std::abs(fine[n]-coarse[n]));
+        std::cout<<"Partition "<<(a?"A":"D")<<" maximum difference="<<difference<<"\n";
+        check(difference<2e-5f,"audio and A control clock are independent of host block partition");
+    }
+    auto invalidInputProcessor=std::make_unique<PWMToneBoyAudioProcessor>(); invalidInputProcessor->prepareToPlay(48000,128);
+    juce::AudioBuffer<float> invalidAudio(2,128); invalidAudio.clear();
+    for(int c=0;c<2;++c) { invalidAudio.setSample(c,0,std::numeric_limits<float>::quiet_NaN()); invalidAudio.setSample(c,1,std::numeric_limits<float>::infinity()); invalidAudio.setSample(c,2,-std::numeric_limits<float>::infinity()); invalidAudio.setSample(c,3,std::numeric_limits<float>::max()); }
+    invalidInputProcessor->processBlock(invalidAudio,midi); bool validBits=true;
+    for(int c=0;c<2;++c) for(int n=0;n<128;++n) validBits &= (std::bit_cast<uint32_t>(invalidAudio.getSample(c,n))&0x7f800000u)!=0x7f800000u;
+    check(validBits,"NaN/Inf/extreme input cannot poison oversampling or output");
+    for(int block=0;block<400;++block) { for(int c=0;c<2;++c) for(int n=0;n<128;++n) invalidAudio.setSample(c,n,float(0.1*std::sin((block*128+n)*0.13))); invalidInputProcessor->processBlock(invalidAudio,midi); }
+    check(invalidAudio.getMagnitude(0,128)>0.01f,"processor recovers normal audio after invalid input");
+    auto continuingCircuit=std::make_unique<PWMToneBoyAudioProcessor>(), freshCircuit=std::make_unique<PWMToneBoyAudioProcessor>();
+    set(*continuingCircuit,"analogMode",1); continuingCircuit->prepareToPlay(48000,128);
+    juce::AudioBuffer<float> probe(2,128);
+    for(int block=0;block<375;++block) { for(int c=0;c<2;++c) for(int n=0;n<128;++n) probe.setSample(c,n,float(0.2*std::sin(tau*1000*(block*128+n)/48000))); continuingCircuit->processBlock(probe,midi); }
+    continuingCircuit->reset(); probe.clear(); continuingCircuit->processBlock(probe,midi);
+    const float continuedCoefficient=continuingCircuit->analysisALowDb.load();
+    check(probe.getMagnitude(0,128)==0,"continuing A coefficient drift remains silent after transport reset");
+    set(*freshCircuit,"analogMode",1); freshCircuit->prepareToPlay(48000,128); probe.clear(); freshCircuit->processBlock(probe,midi);
+    check(std::abs(continuedCoefficient-freshCircuit->analysisALowDb.load())>0.001f,"transport reset does not rewind A circuit drift like a decorative animation");
+    invalidInputProcessor->prepareToPlay(std::numeric_limits<double>::infinity(),std::numeric_limits<int>::max());
+    check(invalidInputProcessor->analysisSampleRate.load()==44100,"invalid host rate falls back safely and excessive advertised block is bounded");
 
     // Exercise actual editor rendering at minimum, reference and maximum sizes.
     for(auto* param:restored.getParameters()) param->setValueNotifyingHost(param->getDefaultValue());

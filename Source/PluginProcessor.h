@@ -38,6 +38,10 @@ public:
     static float processAnalogColour(float x,float memory,float load=0,bool dynamic=false) noexcept;
     struct AnalogProfile { float lowDb{},highDb{},lowHz{},highHz{}; };
     static AnalogProfile analogProfile(float modeMix,float load) noexcept;
+    struct AnalogVariation { float lowDb{},highDb{},lowTune{},highTune{},gainDb{}; };
+    static AnalogVariation analogVariation(double phase1,double phase2,float load) noexcept;
+    AnalogProfile analogProfileSnapshot() const noexcept;
+    static double responseForProfile(double frequency,double rate,bool eq,float threshold,float ratio,float outputDb,bool pad,float blend,const AnalogProfile&,float analogGain);
     float parameter(const char* id) const { return apvts.getRawParameterValue(id)->load(); }
     int readScope(ToneBoyScopeFrame* destination, int maximum);
     double linearResponseDb(double frequency) const;
@@ -45,6 +49,7 @@ public:
     std::atomic<double> analysisSampleRate{44100};
     std::atomic<unsigned> scopeOverruns{0};
     std::atomic<float> analysisAnalogLoad{0},analysisAnalogMix{0},analysisGainReduction{0};
+    std::atomic<float> analysisALowDb{0.15f},analysisAHighDb{-0.10f},analysisALowHz{65},analysisAHighHz{8000},analysisAGain{1};
     bool loadTestFile(const juce::File&);
     void setTestSource(int source);
     bool isStandalone() const { return wrapperType == wrapperType_Standalone; }
@@ -80,6 +85,10 @@ private:
     std::array<std::atomic<float>*,16> controls{};
     juce::SmoothedValue<float> analogSmooth;
     float analogLoad{},analogAttack{},analogRelease{};
+    double analogPhase1{},analogPhase2{};
+    unsigned analogCoefficientCounter{};
+    AnalogProfile currentAnalogProfile{0.15f,-0.10f,65,8000};
+    float analogCircuitGain{1};
     juce::SmoothedValue<float> outputSmooth;
     juce::SmoothedValue<float> thresholdSmooth, ratioSmooth, decaySmooth, clockSmooth, crushSmooth, padSmooth, bypassSmooth;
     juce::SmoothedValue<float> eqSmooth, hpfSmooth, linkSmooth, kiSmooth, pdaSmooth, weightSmooth, rawSmooth;

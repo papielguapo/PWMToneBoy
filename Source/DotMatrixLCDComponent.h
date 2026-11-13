@@ -68,8 +68,9 @@ private:
         const auto threshold=p.parameter("threshold"),trim=p.parameter("outputGain");
         const auto ratio=PWMToneBoyAudioProcessor::ratios[size_t(juce::jlimit(0,6,int(p.parameter("ratioIndex"))))];
         const auto load=p.analysisAnalogLoad.load(),modeMix=p.analysisAnalogMix.load();
+        const auto profile=p.analogProfileSnapshot(); const auto analogGain=p.analysisAGain.load();
         const auto reduction=bypassed?0.0f:p.analysisGainReduction.load();
-        const auto response=[=](double f){return bypassed?0.0:PWMToneBoyAudioProcessor::linearResponseDb(f,rate,eq,threshold,ratio,trim,pad,analog,load,modeMix);};
+        const auto response=[=](double f){return bypassed?0.0:PWMToneBoyAudioProcessor::responseForProfile(f,rate,eq,threshold,ratio,trim,pad,modeMix,profile,analogGain);};
         const double maximum=juce::jmin(20000.0,rate*0.45);
         const auto reference=response(1000);
         const float high=float(juce::jmax(12.0,std::ceil((reference+3)/6)*6));
