@@ -1,4 +1,4 @@
-# Guía de uso — PWM TONE BOY v1.6.0
+# Guía de uso — PWM TONE BOY v1.4.0
 
 **Creado por PAPIELGUAPO · Windows x64 · VST3 + Standalone**
 
@@ -12,7 +12,7 @@ Es un diseño original inspirado en comportamientos del STC-8. No se ha calibrad
 
 ## Descargar e instalar
 
-1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.6.0](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.6.0).
+1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.4.0](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.4.0).
 2. Descomprime el ZIP. Copia la carpeta completa `VST3/PWM TONE BOY.vst3` a `C:\Program Files\Common Files\VST3`. Cierra los programas que estén usando el plugin antes de sustituirlo. Windows puede solicitar permisos de administrador.
 3. Vuelve a escanear los plugins en tu DAW y carga **PWM TONE BOY**, fabricante **PAPIELGUAPO**.
 4. Para usarlo sin DAW, abre `Standalone/PWM TONE BOY.exe`.
@@ -28,43 +28,15 @@ El ZIP también incluye esta guía, las imágenes de la interfaz y de los nuevos
 - **Arrastra la esquina inferior derecha:** redimensiona del 80% al 200%, manteniendo las proporciones. El plugin recuerda el ancho con el estado del proyecto.
 - Mantén el puntero sobre un control para ver su ayuda. La rueda del ratón no modifica las perillas, evitando cambios accidentales.
 
-## Ajuste rápido y modos continuos (v1.6.0)
-
-**Doble clic en cualquiera de las cinco lecturas numéricas** abre un campo editable: THRESHOLD, RATIO, DECAY/Release, SELECT y OUTPUT. Escribe el número y pulsa Enter para aplicar; Escape cancela. También se admite coma decimal. Los valores fuera de rango se limitan al rango permitido; una entrada inválida conserva el ajuste anterior. No escribas unidades ni la relación completa.
-
-- THRESHOLD y OUTPUT se escriben en dB: por ejemplo `-23.5` y `+2.5`.
-- Release se escribe siempre en **milisegundos**, aunque la lectura normal use segundos: `1400` equivale a 1.4 s.
-- RATIO recibe solo la cantidad: `2.5` significa 2.5:1 en COMP/UP o 1:2.5 en EXP.
-- SELECT se escribe en kHz: `120`. Continúa siendo el control heredado sin efecto de DAC en el audio.
-
-**Pulsa el título B — RATIO** para abrir el menú COMP / EXP / UP. La perilla ajusta libremente el ratio dentro del modo seleccionado, sin posiciones fijas. Cada modo recuerda su propio valor. Release también es continuo; las cifras mostradas se redondean para facilitar la lectura, sin imponer esos pasos al parámetro.
-
-COMP comprime por encima del umbral. EXP expande hacia arriba hasta 1:4. UP eleva la parte que queda por debajo del umbral, hasta 4:1. EXP y UP conservan rodilla suave, realce máximo +12 dB y ninguna compensación Auto-Gain fija; la protección de picos puede reducir el realce. La ganancia de UP se desvanece cerca del silencio para evitar elevar indefinidamente el fondo.
-
-Los ajustes guardados de versiones anteriores se convierten automáticamente a los nuevos valores y modos, dentro de la precisión de coma flotante. **Las automatizaciones antiguas de Ratio/Decay deben reasignarse** a Compression ratio, Expansion ratio, Upward ratio, Release (ms) y Dynamics mode. Los parámetros Legacy stepped ratio/decay se conservan para identificar estados antiguos y ya no controlan el audio.
-
 ## Perillas
 
 | Perilla | Qué hace | Rango y valor inicial |
 |---|---|---|
 | **PWM THRESHOLD** | Fija el umbral del compresor. Al bajarlo, una mayor parte de la señal entra en compresión. La rodilla hace que la transición alrededor del umbral sea gradual. El display inferior muestra dB. | −42 a 0 dB; inicial **−18 dB**. |
-| **B — RATIO** | Ratio continuo. Pulsa el título B — RATIO para elegir COMP, EXP o UP. Cada modo conserva su cantidad. Doble clic en la lectura permite escribirla. | COMP **1:1–100:1**; EXP **1:1–1:4**; UP **1:1–4:1**. Inicial COMP **3:1**; EXP y UP **1.3**. |
-| **A — DECAY** | Release continuo; la recuperación real sigue dependiendo de la señal y la memoria del detector. Doble clic en la lectura para escribir milisegundos. | **50–3200 ms**, inicial **200 ms**. |
+| **B — RATIO** | Define la intensidad de la compresión por encima de la rodilla. 1:1 desactiva la reducción del compresor, pero conserva filtros, KI si está activo, Auto-Gain según su fórmula y protección de picos. INF es una relación interna de 100:1. | **1:1, 2:1, 3:1, 5:1, 10:1, 20:1, INF**; inicial **3:1**. |
+| **A — DECAY** | Ajusta la recuperación base de la dinámica. Valores cortos recuperan antes y largos mantienen más tiempo la reducción. El tiempo real también depende de la memoria de la compresión: no es un cronómetro fijo de vuelta a cero. | **100, 200, 400, 800 ms, 1.6 y 3.2 s**; inicial **200 ms**. |
 | **SELECT** | Control de reloj PWM heredado. Conserva su posición y lectura, pero **no modifica el audio en v1.2.1**, porque sample-and-hold y DAC están desactivados. | 4–250 kHz; inicial **120 kHz**. |
 | **OUTPUT** | Sube o baja el nivel procesado después de Auto-Gain y de la protección de picos. No modifica el umbral ni el ratio. Los cambios se suavizan durante 20 ms. Ganancias positivas pueden superar 0 dBFS después de la protección; comprueba el nivel de salida del DAW. En BYPASS se escucha la señal seca, sin OUTPUT. | **−24 a +12 dB**; inicial **0 dB**. |
-
-## EXP y UP: dinámica ascendente (v1.5.0)
-
-En v1.5.0 se añadieron cuatro posiciones tras INF. Desde v1.6.0 se sustituyen por los modos EXP y UP con cantidad continua; ambos funcionan en A y D.
-
-- **EXP 1:1.3 / EXP 1:1.4:** expansión hacia arriba. Por cada dB adicional de entrada por encima de THRESHOLD, la curva estática sube 1.3 / 1.4 dB, fuera de la rodilla y del límite de realce. Realza ataques y partes fuertes.
-- **UP 1.3:1 / UP 1.4:1:** compresión ascendente. Eleva lo que queda por debajo de THRESHOLD y deja a ganancia unitaria lo que queda por encima, fuera de la rodilla. Ayuda a sacar cuerpo y detalle en un bus paralelo.
-
-Ambos usan rodilla suave de 6 dB, ataque/recuperación del detector y un máximo de +12 dB de realce dinámico. No aplican Auto-Gain fijo. En UP el realce se desvanece entre −80 y −100 dB del detector para evitar elevar indefinidamente el fondo; no elimina ruido ya presente en la grabación. Desde reposo la entrada cero sigue dando cero. La protección de picos existente puede reducir el efecto con señales fuertes. OUTPUT sigue después de esa protección.
-
-Para paralelo, duplica/envía la señal a un bus, elige UP, ajusta THRESHOLD a la zona que quieras levantar y mezcla el retorno a poco nivel. EXP sirve para añadir ataque. El plugin no incorpora un nuevo control dry/wet; el host debe compensar la latencia declarada de 6 muestras.
-
-Los índices de las siete posiciones anteriores se conservan en el estado guardado. **Al ampliar un parámetro de siete a once opciones cambia su escala normalizada: revisa la automatización de RATIO de proyectos anteriores.**
 
 ## Palancas y botones
 
@@ -96,7 +68,7 @@ Está en la antigua placa AUTO-GAIN. Un clic alterna entre **A**, a la izquierda
 
 ## Auto-Gain y protección de picos
 
-Auto-Gain está activo en las posiciones tradicionales de compresión y no tiene botón propio. En EXP y UP su compensación fija es 0 dB. Su compensación se calcula a partir de umbral y ratio: `(-threshold × (1 − 1/ratio)) × 0.54 dB`. No es una normalización a LUFS ni garantiza que el volumen percibido coincida con bypass. Usa OUTPUT para comparar a oído a un nivel similar.
+Auto-Gain está siempre activo en la ruta procesada y no tiene botón propio. Su compensación se calcula a partir de umbral y ratio: `(-threshold × (1 − 1/ratio)) × 0.54 dB`. No es una normalización a LUFS ni garantiza que el volumen percibido coincida con bypass. Usa OUTPUT para comparar a oído a un nivel similar.
 
 La protección de picos actúa cerca de −0.45 dBFS antes de OUTPUT, con retención de 0.5 ms y recuperación de 60 ms. Después hay una curva de seguridad que permanece lineal hasta ±0.98. Al final, OUTPUT permite ajustar el volumen manualmente.
 
@@ -214,30 +186,3 @@ El código del motor de audio se conserva respecto a v1.2.1. Se comprueban todas
 
 
 **Resultado de la auditoría v1.4.0:** 3.935 aserciones con cero fallos y pluginval nivel 10 superado. La variación real de A se midió sin editor; se comprobó D estable, silencio, recuperación de NaN/Inf, continuidad de fase de A entre resets y equivalencia de bloques de 17/511 muestras. [Informe completo](AUDITORIA-v1.4.0.md).
-
-## Validación v1.5.0
-
-4.658 aserciones, cero fallos; pluginval nivel 10 (semilla 1472) aprobado. Las referencias anteriores de D y A se mantienen. En una senoide de 1 kHz, 48 kHz, umbral −24 dB, KI/PDA/H-SC apagados, EQ desactivado y con margen para no limitar, el realce RMS medido respecto a 1:1 fue:
-
-| Modo | Pico de entrada | Realce medido |
-|---|---:|---:|
-| EXP 1:1.3 | 0.25 | +3.377 dB |
-| EXP 1:1.4 | 0.25 | +4.503 dB |
-| UP 1.3:1 | 0.01 | +3.860 dB |
-| UP 1.4:1 | 0.01 | +4.779 dB |
-
-Se comprobaron el lado correcto del umbral, la ganancia máxima estática, silencio exacto desde reposo, audio finito al cambiar modos y guardado/restauración de cada posición. En el LCD, G+ indica realce; GR indica reducción. El historial representa la magnitud de la acción dinámica.
-
-## Fluidez de la interfaz (v1.5.1)
-
-El ajuste armónico de las ventanas de 8192 muestras se ejecuta en un hilo de fondo perteneciente al editor. La interfaz entrega y recoge resultados sin esperar al cálculo; al cerrar el editor se termina ese hilo. Los resultados anteriores a un cambio de frecuencia de muestreo o A/D se descartan.
-
-El dibujo fijo de la skin y la textura de puntos se guardan en imágenes a doble resolución lógica. El panel ya no se repinta entero periódicamente; los controles se repintan a sí mismos y solo se invalidan las lecturas que cambian. La LCD se refresca a 30 Hz. El sonido, el suavizado de parámetros, la latencia de audio y las posiciones de RATIO no cambian respecto a v1.5.0.
-
-PWM pasa de 22 a 32 puntos y se acerca visualmente a TONE BOY. Se mantiene el resto del diseño. Estas optimizaciones reducen trabajo en el hilo que atiende el ratón; la fluidez final también depende de la carga del host y del sistema.
-
-Validación v1.5.1: 4.688 aserciones sin fallos. Se comparó el resultado del analizador en segundo plano con la referencia síncrona y se comprobó el descarte de resultados antiguos; además se renderizaron seis vistas y cuatro tamaños de editor. Las mediciones de audio anteriores permanecen iguales. El tiempo de captura de la interfaz se registra en QA/regression.txt: es una medición offline, no una medida de latencia del ratón en FL Studio.
-
-## Validación v1.6.0
-
-4.894 aserciones sin fallos y pluginval nivel 10 aprobado. Se comprobaron las 66 combinaciones de ratio/release antiguas, valores fraccionarios continuos, guardado de cantidades por modo, extremos EXP 1:4 y UP 4:1, cambios de modo con audio, edición de las cinco lecturas, punto/coma/signo positivo, cancelación, rechazo de entradas inválidas y límites al escribir ratios. Los analizadores, el silencio y las referencias anteriores de audio también superan la regresión. La migración conserva los valores dentro de la precisión de coma flotante; no convierte automáticamente la automatización antigua del host.

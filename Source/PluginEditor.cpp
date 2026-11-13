@@ -1,6 +1,4 @@
 #include "PluginEditor.h"
-#include <charconv>
-#include <bit>
 
 PWMToneBoyAudioProcessorEditor::PWMToneBoyAudioProcessorEditor(PWMToneBoyAudioProcessor& proc)
  : AudioProcessorEditor(proc),p(proc),panel(*this),lcd(proc)
@@ -8,19 +6,8 @@ PWMToneBoyAudioProcessorEditor::PWMToneBoyAudioProcessorEditor(PWMToneBoyAudioPr
     setLookAndFeel(&look); addAndMakeVisible(panel); panel.setSize(420,680);
     panel.addAndMakeVisible(lcd); lcd.setBounds(98,113,240,176);
     setupKnob(threshold,"threshold",false,{49,365,110,110},"PWM threshold; double-click restores -18 dB");
-    setupKnob(ratio,"compressRatio",true,{222,404,68,68},"B / Ratio: compression, EXP upward expansion, UP upward compression; boost capped at +12 dB");
-    setupKnob(decay,"releaseMs",true,{299,360,68,68},"Continuous release: 50 ms to 3.2 s; program-dependent recovery");
-    panel.addAndMakeVisible(ratioModeButton); ratioModeButton.setBounds(216,391,80,12);
-    ratioModeButton.setMouseCursor(juce::MouseCursor::PointingHandCursor);
-    ratioModeButton.setTooltip("Click B / RATIO heading to select COMP / EXP / UP. Turn the knob for a continuous ratio.");
-    ratioModeButton.onClick=[this]
-    {
-        juce::PopupMenu menu; const int selected=int(p.parameter("dynamicsMode"));
-        menu.addItem(1,"COMP - compression",true,selected==0); menu.addItem(2,"EXP - upward expansion",true,selected==1); menu.addItem(3,"UP - upward compression",true,selected==2);
-        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&ratioModeButton),[safe=juce::Component::SafePointer<PWMToneBoyAudioProcessorEditor>(this)](int result)
-        { if(safe && result>0) { auto* param=safe->p.apvts.getParameter("dynamicsMode"); param->beginChangeGesture(); param->setValueNotifyingHost(param->convertTo0to1(float(result-1))); param->endChangeGesture(); safe->updateRatioAttachment(); } });
-    };
-    updateRatioAttachment();
+    setupKnob(ratio,"ratioIndex",true,{222,404,68,68},"B / Ratio: seven positions");
+    setupKnob(decay,"decayIndex",true,{299,360,68,68},"A / Decay: six positions");
     setupKnob(clock,"clockRate",false,{161,505,48,48},"SELECT / PWM clock, 4 to 250 kHz");
     setupKnob(crush,"outputGain",false,{214,505,48,48},"Output level: -24 to +12 dB; double-click for 0 dB");
     setupButton(eq,"eqIn","toggle",{48,514,34,34},"Reconstruction filter: 11.2 kHz / 20 kHz");
@@ -32,36 +19,6 @@ PWMToneBoyAudioProcessorEditor::PWMToneBoyAudioProcessorEditor(PWMToneBoyAudioPr
     setupButton(pda,"pdaMode","lamp",{309,553,28,28},"Program-dependent attack: 0.35 to 2.2 ms");
     setupButton(weight,"kWeightSc","lamp",{344,553,28,28},"H-SC: presence emphasis, 65% peak + 35% RMS");
     setupButton(analog,"analogMode","horizontal",{138,592,111,29},"A: dynamic analog colour / D: clean digital path; KI remains independent");
-    const std::array<juce::Rectangle<int>,5> valueBounds{{{66,475,78,20},{220,470,74,15},{295,428,76,15},{153,554,62,13},{213,554,52,13}}};
-    for(size_t i=0;i<valueLabels.size();++i)
-    {
-        auto& label=valueLabels[i]; panel.addAndMakeVisible(label); label.setBounds(valueBounds[i]);
-        label.setName("Value "+juce::String(i)); label.setEditable(false,true,false); label.setJustificationType(juce::Justification::centred);
-        label.setBorderSize(juce::BorderSize<int>(0)); label.setFont(ToneBoyLookAndFeel::font(i==0?12.0f:9.0f));
-        label.setColour(juce::Label::textColourId,i==0?juce::Colour(0xff30323c):ToneBoyLookAndFeel::navy());
-        label.setColour(juce::Label::textWhenEditingColourId,juce::Colour(0xff202330));
-        label.setColour(juce::Label::backgroundWhenEditingColourId,juce::Colour(0xffeeeee3));
-        label.setTooltip(i==2?"Double-click to type release in milliseconds (50 - 3200). Enter confirms; Escape cancels.":"Double-click to type a value. Enter confirms; Escape cancels.");
-        label.onEditorShow=[this,i]
-        {
-            editingIds[i]=valueParameter(i); auto* editor=valueLabels[i].getCurrentTextEditor();
-            editor->setInputRestrictions(16,"0123456789-+.,"); editor->setText(juce::String(p.parameter(editingIds[i].toRawUTF8()),4),false); editor->selectAll();
-        };
-        label.onTextChange=[this,i]
-        {
-            auto entry=valueLabels[i].getText().trim().replaceCharacter(',','.'); if(entry.startsWithChar('+')) entry=entry.substring(1);
-            const auto text=entry.toStdString(); float value{};
-            const auto parsed=std::from_chars(text.data(),text.data()+text.size(),value);
-            if(parsed.ec==std::errc{} && parsed.ptr==text.data()+text.size() && (std::bit_cast<uint32_t>(value)&0x7f800000u)!=0x7f800000u)
-            {
-                auto* parameter=p.apvts.getParameter(editingIds[i].isEmpty()?valueParameter(i):editingIds[i].toRawUTF8());
-                value=parameter->getNormalisableRange().snapToLegalValue(value);
-                parameter->beginChangeGesture(); parameter->setValueNotifyingHost(parameter->convertTo0to1(value)); parameter->endChangeGesture();
-            }
-            updateReadouts();
-        };
-    }
-    updateReadouts();
     if(p.isStandalone())
     {
         addAndMakeVisible(testChoice); addAndMakeVisible(loadButton);
@@ -106,19 +63,6 @@ void PWMToneBoyAudioProcessorEditor::resized()
 }
 void PWMToneBoyAudioProcessorEditor::paintPanel(juce::Graphics& g)
 {
-    if(skin.isNull())
-    {
-        skin=juce::Image(juce::Image::ARGB,840,1360,true);
-        juce::Graphics artwork(skin); artwork.addTransform(juce::AffineTransform::scale(2.0f));
-        paintStaticPanel(artwork);
-    }
-    g.drawImage(skin,0,0,420,680,0,0,840,1360);
-    g.setColour(juce::Colour(p.parameter("bypass")>0.5f?0xff54323a:0xfffa3445)); g.fillEllipse(64,170,8,8);
-    if(p.parameter("bypass")<0.5f) { g.setColour(juce::Colour(0xfffa7482)); g.fillEllipse(65,171,3,2); }
-
-}
-void PWMToneBoyAudioProcessorEditor::paintStaticPanel(juce::Graphics& g)
-{
     using L=ToneBoyLookAndFeel;
     g.fillAll(juce::Colour(0xff34353c));
     g.setGradientFill(juce::ColourGradient(juce::Colour(0xff62636b),0,0,juce::Colour(0xff292b30),420,680,false)); g.fillRoundedRectangle(4,4,412,672,5);
@@ -139,57 +83,28 @@ void PWMToneBoyAudioProcessorEditor::paintStaticPanel(juce::Graphics& g)
     for(int i=0;i<2;++i) { g.setColour(i==0?juce::Colour(0xff7a2148):L::navy()); g.fillRect(63,89+i*4,58,2); g.fillRect(300,89+i*4,56,2); }
     L::text(g,"DOT MATRIX / STEREO SOUND",{124,85,172,14},7,juce::Colour(0xffd6d2d8));
     g.setColour(juce::Colour(0xff383e26)); g.fillRect(94,109,248,184);
+    g.setColour(juce::Colour(p.parameter("bypass")>0.5f?0xff54323a:0xfffa3445)); g.fillEllipse(64,170,8,8);
+    if(p.parameter("bypass")<0.5f) { g.setColour(juce::Colour(0xfffa7482)); g.fillEllipse(65,171,3,2); }
     L::text(g,"BATTERY",{54,182,34,9},5.5f,juce::Colour(0xffe3dee4));
     L::text(g,"CLICK LCD TO CHANGE VIEW",{110,296,215,10},6,juce::Colour(0xffd6d2d8));
-    g.setColour(L::navy()); g.setFont(juce::Font(juce::FontOptions("Arial Black",32,juce::Font::bold))); g.drawText("PWM",53,323,90,34,juce::Justification::centredLeft);
-    g.setFont(juce::Font(juce::FontOptions("Arial",24,juce::Font::bold|juce::Font::italic))); g.drawText("TONE BOY",123,326,190,27,juce::Justification::centredLeft);
+    g.setColour(L::navy()); g.setFont(juce::Font(juce::FontOptions("Arial Black",22,juce::Font::bold))); g.drawText("PWM",53,326,72,27,juce::Justification::centredLeft);
+    g.setFont(juce::Font(juce::FontOptions("Arial",24,juce::Font::bold|juce::Font::italic))); g.drawText("TONE BOY",126,326,190,27,juce::Justification::centredLeft);
     L::text(g,"PWM THRESHOLD",{44,355,120,12},9);
-    g.setColour(juce::Colour(0xffa6a59f)); g.fillRoundedRectangle(66,475,78,20,3);
+    g.setColour(juce::Colour(0xffa6a59f)); g.fillRoundedRectangle(66,475,78,20,3); L::text(g,juce::String(p.parameter("threshold"),1)+" dB",{66,475,78,20},12,juce::Colour(0xff30323c));
     L::text(g,juce::String::fromUTF8("A — DECAY"),{294,350,80,11},8); L::text(g,juce::String::fromUTF8("B — RATIO"),{216,391,80,11},8);
+    const auto* rp=p.apvts.getParameter("ratioIndex"); const auto* dp=p.apvts.getParameter("decayIndex");
+    L::text(g,rp->getCurrentValueAsText(),{223,470,68,15},10); L::text(g,dp->getCurrentValueAsText(),{299,428,68,15},10);
     L::text(g,"EQ IN",{43,497,44,12},8); L::text(g,"HPF SC",{89,497,44,12},8);
     L::text(g,"11.2kHz",{42,551,46,10},7); L::text(g,"90Hz",{89,551,44,10},7);
     g.saveState(); g.addTransform(juce::AffineTransform::rotation(-0.20944f,184,499)); L::text(g,"SELECT",{160,491,50,12},8); g.restoreState();
     g.saveState(); g.addTransform(juce::AffineTransform::rotation(-0.20944f,238,499)); L::text(g,"OUTPUT",{214,491,48,12},8); g.restoreState();
-
+    L::text(g,juce::String(p.parameter("clockRate"),1)+"k",{153,554,62,13},9); L::text(g,juce::String(p.parameter("outputGain"),1)+"dB",{213,554,52,13},9);
     const juce::String names[]{"LINK","BYPASS","PAD","KI","PDA","H-SC"};
     for(int i=0;i<6;++i) L::text(g,names[i],{float(270+(i%3)*35),float(i<3?493:541),36,12},7);
     g.setColour(juce::Colour(0xffb6b4ad)); g.fillRoundedRectangle(138,592,111,29,5); g.setColour(juce::Colour(0xffdfddd6)); g.drawRoundedRectangle(138,592,111,29,5,0.7f);
     for(int i=0;i<6;++i) { juce::Path slot; slot.addRoundedRectangle(0,0,5,43,2.5f); const auto t=juce::AffineTransform::rotation(-0.488692f).translated(float(291+i*12),581.0f-float(i)*2); g.setColour(juce::Colour(0xff77767c)); g.fillPath(slot,t); g.setColour(juce::Colour(0xffeceae2).withAlpha(0.5f)); g.strokePath(slot,juce::PathStrokeType(0.6f),t); }
 }
-void PWMToneBoyAudioProcessorEditor::timerCallback()
-{
-    // Controls and LCD repaint themselves. Only invalidate changed numeric readouts.
-    updateRatioAttachment(); updateReadouts();
-    const std::array<const char*,9> ids{"threshold","compressRatio","releaseMs","clockRate","outputGain","bypass","expandRatio","upwardRatio","dynamicsMode"};
-    const std::array<juce::Rectangle<int>,9> areas{{{66,475,78,20},{220,470,74,15},{295,428,76,15},{153,554,62,13},{213,554,52,13},{63,169,11,11},{220,470,74,15},{220,470,74,15},{220,470,74,15}}};
-    for(size_t i=0;i<ids.size();++i) { const auto value=p.parameter(ids[i]); if(value!=lastReadouts[i]) { lastReadouts[i]=value; panel.repaint(areas[i]); } }
-}
-void PWMToneBoyAudioProcessorEditor::updateRatioAttachment()
-{
-    const int mode=juce::jlimit(0,2,int(p.parameter("dynamicsMode")));
-    if(mode==attachedMode || ratio.isMouseButtonDown()) return;
-    attachedMode=mode; sliders[1].reset();
-    const char* id=mode==1?"expandRatio":mode==2?"upwardRatio":"compressRatio";
-    sliders[1]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.apvts,id,ratio);
-    const auto* parameter=p.apvts.getParameter(id);
-    ratio.setDoubleClickReturnValue(true,parameter->convertFrom0to1(parameter->getDefaultValue()));
-    ratio.setName(parameter->getName(80)); panel.repaint(220,470,74,15);
-}
-const char* PWMToneBoyAudioProcessorEditor::valueParameter(size_t index) const
-{
-    if(index==1) { const int mode=int(p.parameter("dynamicsMode")); return mode==1?"expandRatio":mode==2?"upwardRatio":"compressRatio"; }
-    const std::array<const char*,5> ids{"threshold","compressRatio","releaseMs","clockRate","outputGain"}; return ids[index];
-}
-void PWMToneBoyAudioProcessorEditor::updateReadouts()
-{
-    const int mode=int(p.parameter("dynamicsMode")); const auto amount=p.parameter(valueParameter(1)),release=p.currentReleaseMs();
-    const std::array<juce::String,5> text{
-        juce::String(p.parameter("threshold"),1)+" dB",
-        mode==1?"EXP 1:"+juce::String(amount,2):mode==2?"UP "+juce::String(amount,2)+":1":juce::String(amount,2)+":1",
-        release>=1000?juce::String(release/1000,2)+"s":juce::String(release,1)+"ms",
-        juce::String(p.parameter("clockRate"),1)+"k",juce::String(p.parameter("outputGain"),1)+"dB"};
-    for(size_t i=0;i<valueLabels.size();++i) if(!valueLabels[i].isBeingEdited() && valueLabels[i].getText()!=text[i]) valueLabels[i].setText(text[i],juce::dontSendNotification);
-}
+void PWMToneBoyAudioProcessorEditor::timerCallback() { panel.repaint(); }
 void PWMToneBoyAudioProcessorEditor::chooseFile()
 {
     chooser=std::make_unique<juce::FileChooser>("Load WAV or AIFF",juce::File{},"*.wav;*.aiff;*.aif");

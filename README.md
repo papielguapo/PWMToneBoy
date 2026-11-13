@@ -1,18 +1,12 @@
 # PWM TONE BOY — PAPIELGUAPO
 
-**v1.6.0 · Ratio y release continuos, con entrada numérica para setup rápido.**
-
-- **COMP 1:1–100:1, EXP 1:1–1:4 y UP 1:1–4:1**. Pulsa el título B — RATIO para elegir modo; cada uno conserva su cantidad. EXP/UP mantienen realce máximo +12 dB.
-- **Release 50–3200 ms**, sin posiciones fijas. Recuperación dependiente del programa.
-- **Doble clic en las cinco lecturas** para escribir: Enter aplica, Escape cancela. Release en ms, SELECT en kHz y ganancias en dB; en ratio escribe solo la cantidad.
-- Ajustes antiguos migrados automáticamente. Reasigna las automatizaciones antiguas de Ratio/Decay a los nuevos parámetros continuos; las versiones Legacy quedan inactivas.
-- Se mantienen la interfaz optimizada de v1.5.1 y las rutas A/D.
+**v1.4.0 · A con variación real de audio; D digital limpio y auditoría documentada.**
 
 ![PWM TONE BOY](docs/images/PWM-TONE-BOY.png)
 
-- **[Descargar VST3 + Standalone — Windows x64](https://github.com/papielguapo/PWMToneBoy/releases/download/v1.6.0/PWM-TONE-BOY-Windows-x64.zip)**
+- **[Descargar VST3 + Standalone — Windows x64](https://github.com/papielguapo/PWMToneBoy/releases/download/v1.4.0/PWM-TONE-BOY-Windows-x64.zip)**
 - **[Guía completa en español](docs/GUIA-ES.md)**
-- **[Auditoría anterior v1.4.0: hallazgos, correcciones, medidas y límites](docs/AUDITORIA-v1.4.0.md)**
+- **[Auditoría v1.4.0: hallazgos, correcciones, medidas y límites](docs/AUDITORIA-v1.4.0.md)**
 
 ## A cambia la señal, no solo la LCD
 
@@ -32,7 +26,7 @@ La auditoría corrige además muestras NaN/Inf antes del oversampling, metadatos
 
 ## Comprobado
 
-**4.894 aserciones sin fallos y pluginval nivel 10 superado.** Medidas sin editor, 48 kHz, seno 0.2 pico, ratio 1:1, umbral 0 dB, KI OFF, dos segundos de asentamiento y cuatro medidos:
+**3.935 aserciones sin fallos y pluginval nivel 10 superado.** Medidas sin editor, 48 kHz, seno 0.2 pico, ratio 1:1, umbral 0 dB, KI OFF, dos segundos de asentamiento y cuatro medidos:
 
 | Frecuencia | Variación pico a pico de A | Variación de D |
 |---|---:|---:|

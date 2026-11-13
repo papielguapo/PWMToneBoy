@@ -15,15 +15,6 @@ void check(bool condition,const char* description)
 void set(PWMToneBoyAudioProcessor& p,const char* id,float v)
 {
     auto* a=p.apvts.getParameter(id); a->setValueNotifyingHost(a->convertTo0to1(v));
-    // Legacy test fixtures continue to express the original stepped positions.
-    const auto write=[&](const char* name,float value){auto* param=p.apvts.getParameter(name); param->setValueNotifyingHost(param->convertTo0to1(value));};
-    if(juce::String(id)=="ratioIndex")
-    {
-        const int i=juce::jlimit(0,10,int(v)); write("dynamicsMode",i>=9?2.0f:i>=7?1.0f:0.0f);
-        if(i<=6) write("compressRatio",PWMToneBoyAudioProcessor::ratios[size_t(i)]);
-        else if(i<=8) write("expandRatio",i==7?1.3f:1.4f); else write("upwardRatio",i==9?1.3f:1.4f);
-    }
-    if(juce::String(id)=="decayIndex") write("releaseMs",PWMToneBoyAudioProcessor::decays[size_t(juce::jlimit(0,5,int(v)))]);
 }
 void finiteBuffer(const juce::AudioBuffer<float>& b)
 {
@@ -124,77 +115,15 @@ int main(int argc,char** argv)
     juce::ScopedJuceInitialiser_GUI juce;
     juce::MidiBuffer midi;
     PWMToneBoyAudioProcessor p;
-    check(p.getParameters().size()==21,"legacy parameters plus continuous dynamics controls");
+    check(p.getParameters().size()==16,"sixteen parameters including output and A/D");
     check(std::abs(p.parameter("threshold")+18)<0.001f && p.parameter("ratioIndex")==2 && p.parameter("decayIndex")==1,"parameter defaults");
     check(p.getBypassParameter()==p.apvts.getParameter("bypass"),"host bypass mapping");
-    check(std::abs(p.parameter("compressRatio")-3)<0.0001f && std::abs(p.currentReleaseMs()-200)<0.001f && p.parameter("dynamicsMode")==0,"continuous controls retain default sound");
-    for(int legacyRatio=0;legacyRatio<11;++legacyRatio) for(int legacyRelease=0;legacyRelease<6;++legacyRelease)
-    {
-        juce::ValueTree legacy("PWMToneBoyState");
-        const auto add=[&](const char* id,float value){juce::ValueTree node("PARAM"); node.setProperty("id",id,nullptr); node.setProperty("value",value,nullptr); legacy.addChild(node,-1,nullptr);};
-        add("ratioIndex",float(legacyRatio)); add("decayIndex",float(legacyRelease));
-        juce::MemoryBlock bytes; auto xml=legacy.createXml(); juce::AudioProcessor::copyXmlToBinary(*xml,bytes);
-        auto migrated=std::make_unique<PWMToneBoyAudioProcessor>(); migrated->setStateInformation(bytes.getData(),int(bytes.getSize()));
-        check(std::abs(migrated->currentRatio()-PWMToneBoyAudioProcessor::ratios[size_t(legacyRatio)])<1e-6f,"all legacy ratio modes migrate to equivalent continuous dynamics");
-        check(std::abs(migrated->currentReleaseMs()-PWMToneBoyAudioProcessor::decays[size_t(legacyRelease)])<0.001f,"all stepped release settings migrate exactly");
-    }
-    {
-        auto continuous=std::make_unique<PWMToneBoyAudioProcessor>();
-        set(*continuous,"releaseMs",137.42f); set(*continuous,"compressRatio",3.14159f);
-        check(std::abs(continuous->currentReleaseMs()-137.42f)<0.001f && std::abs(continuous->currentRatio()-3.14159f)<0.0001f,"arbitrary continuous values are not quantized to steps");
-        set(*continuous,"dynamicsMode",1); set(*continuous,"expandRatio",4);
-        check(std::abs(continuous->currentRatio()-0.25f)<1e-6f,"EXP reaches 1:4");
-        set(*continuous,"dynamicsMode",2); set(*continuous,"upwardRatio",4);
-        check(continuous->currentRatio()==-4,"UP reaches 4:1");
-        juce::MemoryBlock state; continuous->getStateInformation(state);
-        auto restoredContinuous=std::make_unique<PWMToneBoyAudioProcessor>(); restoredContinuous->setStateInformation(state.getData(),int(state.getSize()));
-        check(restoredContinuous->currentRatio()==-4 && std::abs(restoredContinuous->currentReleaseMs()-137.42f)<0.001f && std::abs(restoredContinuous->parameter("compressRatio")-3.14159f)<0.0001f,"new state preserves each mode amount and fractional release");
-        continuous->prepareToPlay(48000,256); juce::AudioBuffer<float> b(2,256);
-        for(int mode:{0,1,2,0}) for(float amount:{1.0f,1.001f,1.3333f,2.71828f,4.0f})
-        {
-            set(*continuous,"dynamicsMode",float(mode)); set(*continuous,mode==0?"compressRatio":mode==1?"expandRatio":"upwardRatio",amount);
-            set(*continuous,"releaseMs",mode==1?50.123f:3199.75f);
-            for(int n=0;n<256;++n) for(int c=0;c<2;++c) b.setSample(c,n,float(0.15*std::sin(juce::MathConstants<double>::twoPi*997*n/48000)));
-            continuous->processBlock(b,midi); finiteBuffer(b);
-        }
-    }
-    for(float r:std::array<float,7>{1,2,3,5,10,20,100})
+    for(float r:PWMToneBoyAudioProcessor::ratios)
     {
         float previous=1;
         for(int i=0;i<500;++i) { const auto g=p.computeSCurveGainLin(juce::Decibels::decibelsToGain(-70.0f+float(i)*0.2f),-18,r); check(g<=previous+1e-6f && g>0 && g<=1,"monotonic S-curve"); previous=g; }
         const auto knee=juce::jlimit(2.5f,10.5f,11-r*0.45f);
         for(float delta:{-knee/2,knee/2}) { const auto lo=p.computeSCurveGainLin(juce::Decibels::decibelsToGain(-18+delta-0.0001f),-18,r); const auto hi=p.computeSCurveGainLin(juce::Decibels::decibelsToGain(-18+delta+0.0001f),-18,r); check(std::abs(lo-hi)<0.0001f,"continuous knee joins"); }
-    }
-    for(float r:{1.0f/1.3f,1.0f/1.4f,-1.3f,-1.4f})
-    {
-        const auto gainAt=[&](float level){return juce::Decibels::gainToDecibels(p.computeSCurveGainLin(juce::Decibels::decibelsToGain(level),-24,r));};
-        check(gainAt(-24)>0,"new modes soft knee boosts at threshold");
-        check(r<0 ? gainAt(-36)>gainAt(-24) : gainAt(-12)>gainAt(-24),"EXP and UP act on correct side of threshold");
-        check(r<0 ? gainAt(-12)==0 : gainAt(-36)==0,"opposite side remains unity outside knee");
-        check(gainAt(-110)==0,"no upward gain at silence floor");
-        for(int i=-120;i<=24;++i) check(gainAt(float(i))>=0 && gainAt(float(i))<=12.001f,"new mode boost bounded to 12 dB");
-    }
-    for(int mode:{7,8,9,10})
-    {
-        double measured[2]{};
-        for(int path=0;path<2;++path)
-        {
-            auto probeOwner=std::make_unique<PWMToneBoyAudioProcessor>(); auto& probe=*probeOwner; set(probe,"ratioIndex",path?float(mode):0); set(probe,"threshold",-24); set(probe,"kiMode",0); set(probe,"eqIn",0); set(probe,"kWeightSc",0); set(probe,"pdaMode",0);
-            probe.prepareToPlay(48000,256); juce::AudioBuffer<float> b(2,256);
-            const float amplitude=mode<9?0.25f:0.01f;
-            for(int block=0;block<400;++block)
-            {
-                for(int n=0;n<256;++n) for(int c=0;c<2;++c) b.setSample(c,n,amplitude*std::sin(float((block*256+n)*juce::MathConstants<double>::twoPi*1000/48000)));
-                probe.processBlock(b,midi);
-                if(block>=300) for(int n=0;n<256;++n) measured[path]+=double(b.getSample(0,n))*b.getSample(0,n);
-            }
-            for(int selected:{0,7,8,9,10,6,2}) { set(probe,"ratioIndex",float(selected)); probe.processBlock(b,midi); finiteBuffer(b); }
-            set(probe,"ratioIndex",float(mode)); probe.reset(); b.clear(); probe.processBlock(b,midi); check(b.getMagnitude(0,256)==0,"new mode exact zero from rest");
-            juce::MemoryBlock state; probe.getStateInformation(state); auto restoredOwner=std::make_unique<PWMToneBoyAudioProcessor>(); auto& restored=*restoredOwner; restored.setStateInformation(state.getData(),int(state.getSize())); check(restored.parameter("ratioIndex")==float(mode),"new ratio state round trip");
-        }
-        const auto boost=10*std::log10(measured[1]/measured[0]);
-        std::cout<<"Mode "<<mode<<" measured boost="<<boost<<" dB\n";
-        check(boost>1 && boost<12,"EXP/UP boosts actual audio with headroom");
     }
     for(double sr:{32000.0,44100.0,48000.0,96000.0,192000.0})
     {
@@ -229,7 +158,7 @@ int main(int argc,char** argv)
     check(dry.getSample(0,p.getLatencySamples())==0.75f && dry.getSample(1,p.getLatencySamples())==-0.5f,"exact delayed bypass");
     set(p,"bypass",0); set(p,"threshold",-25.4f); p.editorWidth.store(630);
     juce::MemoryBlock state; p.getStateInformation(state);
-    auto restoredOwner=std::make_unique<PWMToneBoyAudioProcessor>(); auto& restored=*restoredOwner; restored.setStateInformation(state.getData(),int(state.getSize()));
+    PWMToneBoyAudioProcessor restored; restored.setStateInformation(state.getData(),int(state.getSize()));
     check(std::abs(restored.parameter("threshold")+25.4f)<0.01f && restored.editorWidth.load()==630,"state and window size roundtrip");
     const char bad[]{'b','a','d'}; restored.setStateInformation(bad,3); check(std::abs(restored.parameter("threshold")+25.4f)<0.01f,"corrupt state rejected");
     auto layout=p.getBusesLayout(); layout.inputBuses.set(0,juce::AudioChannelSet::mono()); layout.outputBuses.set(0,juce::AudioChannelSet::mono());
@@ -301,14 +230,6 @@ int main(int argc,char** argv)
     check(std::abs(analysis.thdDb+59.9568)<1,"harmonic THD matches known synthetic reference");
     std::cout<<"Harmonic reference f0="<<analysis.frequency<<" THD="<<analysis.thdDb<<" THD+N="<<analysis.thdnDb<<"\n";
     check(std::abs(analysis.thdnDb-analysis.thdDb)<1,"noise-free THD+N agrees with known harmonic distortion");
-    {
-        auto worker=std::make_unique<ToneBoyHarmonicWorker>(); ToneBoyHarmonicResult asynchronous;
-        check(worker->submit(*testInput,*testOutput,48000,1),"harmonic worker accepts frame without waiting for analysis");
-        worker->waitForDiagnostic(); check(worker->take(asynchronous,1),"harmonic worker publishes completed frame");
-        check(asynchronous.status==analysis.status && std::abs(asynchronous.thdDb-analysis.thdDb)<1e-9 && std::abs(asynchronous.frequency-analysis.frequency)<1e-9,"worker matches harmonic reference without changing analysis maths");
-        check(worker->submit(*testInput,*testOutput,48000,2),"harmonic worker accepts subsequent frame"); worker->waitForDiagnostic();
-        check(!worker->take(asynchronous,3),"stale harmonic frame rejected after rate or mode reset");
-    }
     for(int n=0;n<8192;++n) (*testOutput)[size_t(n)]+=float(0.001*std::sin(tau*6000*n/48000));
     analysis=ToneBoyHarmonicAnalysis::analyse(*testInput,*testOutput,48000);
     check(analysis.thdnDb>analysis.thdDb+8,"THD+N includes nonharmonic residual energy");
@@ -404,59 +325,14 @@ int main(int argc,char** argv)
     for(auto* param:restored.getParameters()) param->setValueNotifyingHost(param->getDefaultValue());
     std::unique_ptr<juce::AudioProcessorEditor> editor(restored.createEditor());
     editor->setVisible(true);
-    {
-        std::function<juce::Label*(juce::Component*,int)> findValue=[&](juce::Component* component,int index)->juce::Label* {
-            if(auto* label=dynamic_cast<juce::Label*>(component); label && label->getName()=="Value "+juce::String(index)) return label;
-            for(auto* child:component->getChildren()) if(auto* value=findValue(child,index)) return value; return nullptr;
-        };
-        const std::array<const char*,5> ids{"threshold","compressRatio","releaseMs","clockRate","outputGain"};
-        const std::array<const char*,5> typed{"-23.5","3.14159","137,42","125.5","+2.5"};
-        const std::array<float,5> expected{-23.5f,3.14159f,137.42f,125.5f,2.5f};
-        for(int i=0;i<5;++i)
-        {
-            auto* label=findValue(editor.get(),i); check(label!=nullptr,"all five knob values have editable readouts");
-            if(!label) continue;
-            label->showEditor(); auto* text=label->getCurrentTextEditor(); check(text!=nullptr,"double-click readout can open text editor");
-            if(text) { text->setText(typed[size_t(i)],false); label->hideEditor(false); }
-            check(std::abs(restored.parameter(ids[size_t(i)])-expected[size_t(i)])<0.001f,"typed value updates correct host parameter, including comma and signed input");
-            label->showEditor(); text=label->getCurrentTextEditor(); if(text) { text->setText("99999",false); label->hideEditor(true); }
-            check(std::abs(restored.parameter(ids[size_t(i)])-expected[size_t(i)])<0.001f,"cancelled numeric entry leaves parameter untouched");
-            label->showEditor(); text=label->getCurrentTextEditor(); if(text) { text->setText("-",false); label->hideEditor(false); }
-            check(std::abs(restored.parameter(ids[size_t(i)])-expected[size_t(i)])<0.001f,"invalid numeric entry leaves parameter untouched");
-        }
-        for(int mode:{1,2})
-        {
-            set(restored,"dynamicsMode",float(mode)); dynamic_cast<PWMToneBoyAudioProcessorEditor*>(editor.get())->refreshReadoutsForDiagnostics();
-            auto* label=findValue(editor.get(),1); label->showEditor(); auto* text=label->getCurrentTextEditor();
-            if(text) { text->setText(mode==1?"3.75":"2.25",false); label->hideEditor(false); }
-            check(std::abs(restored.currentRatio()-(mode==1?1.0f/3.75f:-2.25f))<0.0001f,"typed ratio follows selected EXP or UP mode");
-            label->showEditor(); text=label->getCurrentTextEditor(); if(text) {text->setText("99",false); label->hideEditor(false);}
-            check(std::abs(restored.currentRatio()-(mode==1?0.25f:-4.0f))<0.0001f,"typed EXP and UP amounts are clamped to safe legal range");
-        }
-        for(auto* parameter:restored.getParameters()) parameter->setValueNotifyingHost(parameter->getDefaultValue());
-    }
     for(int w:{336,420,630,840})
     {
         editor->setSize(w,juce::roundToInt(float(w)*680/420));
         const float scale=float(w)/420;
         auto* hit=editor->getComponentAt(juce::roundToInt(104*scale),juce::roundToInt(420*scale));
         check(hit!=nullptr && hit->getName()=="PWM Threshold","scaled threshold hit target matches drawing");
-        dynamic_cast<PWMToneBoyAudioProcessorEditor*>(editor.get())->refreshReadoutsForDiagnostics(); auto image=editor->createComponentSnapshot(editor->getLocalBounds()); check(image.isValid(),"resized editor snapshot");
+        auto image=editor->createComponentSnapshot(editor->getLocalBounds()); check(image.isValid(),"resized editor snapshot");
         if(argc>1) { juce::File out=juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]).getChildFile("UI-"+juce::String(w)+".png"); out.getParentDirectory().createDirectory(); juce::FileOutputStream stream(out); stream.setPosition(0); stream.truncate(); juce::PNGImageFormat png; png.writeImageToStream(image,stream); }
-    }
-    {
-        editor->setSize(420,680); std::array<double,20> durations{};
-        for(size_t frame=0;frame<durations.size();++frame)
-        {
-            set(restored,"threshold",-30+float(frame));
-            dynamic_cast<PWMToneBoyAudioProcessorEditor*>(editor.get())->refreshReadoutsForDiagnostics();
-            const auto start=juce::Time::getMillisecondCounterHiRes(); auto snapshot=editor->createComponentSnapshot(editor->getLocalBounds());
-            durations[frame]=juce::Time::getMillisecondCounterHiRes()-start;
-            check(snapshot.isValid(),"cached skin redraw supports continuously changing controls");
-        }
-        std::sort(durations.begin(),durations.end());
-        std::cout<<"UI full snapshot at 420px median="<<durations[10]<<" ms max="<<durations.back()<<" ms (offline, not host input latency)\n";
-        set(restored,"threshold",-18);
     }
     std::function<DotMatrixLCDComponent*(juce::Component*)> findLcd=[&](juce::Component* component)->DotMatrixLCDComponent* { if(auto* screen=dynamic_cast<DotMatrixLCDComponent*>(component)) return screen; for(auto* child:component->getChildren()) if(auto* screen=findLcd(child)) return screen; return nullptr; };
     auto* screen=findLcd(editor.get()); check(screen!=nullptr,"editor contains its diagnostic LCD");
@@ -472,7 +348,7 @@ int main(int argc,char** argv)
         for(int view=1;view<=5;++view)
         {
             screen->advanceView();
-            if(view>=4 && argc>1) { dynamic_cast<PWMToneBoyAudioProcessorEditor*>(editor.get())->refreshReadoutsForDiagnostics(); auto image=editor->createComponentSnapshot(editor->getLocalBounds()); auto out=juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]); juce::FileOutputStream stream(out.getChildFile("UI-M"+juce::String(view)+".png")); stream.setPosition(0); stream.truncate(); juce::PNGImageFormat png; check(png.writeImageToStream(image,stream),"new analysis screen snapshot saved"); }
+            if(view>=4 && argc>1) { auto image=editor->createComponentSnapshot(editor->getLocalBounds()); auto out=juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]); juce::FileOutputStream stream(out.getChildFile("UI-M"+juce::String(view)+".png")); stream.setPosition(0); stream.truncate(); juce::PNGImageFormat png; check(png.writeImageToStream(image,stream),"new analysis screen snapshot saved"); }
         }
     }
     if(screen)
@@ -481,7 +357,7 @@ int main(int argc,char** argv)
         for(int block=0;block<32;++block) { for(int n=0;n<256;++n) for(int c=0;c<2;++c) music.setSample(c,n,float(0.15*std::sin(tau*220*(block*256+n)/48000)+0.1*std::sin(tau*777*(block*256+n)/48000)+0.05*std::sin(tau*3290*(block*256+n)/48000))); restored.processBlock(music,midi); screen->refreshDiagnostics(); }
         check(screen->getHarmonicResult().status==ToneBoyHarmonicResult::Status::needsTone && screen->getSpectrumPeakDb()>-50,"M5 shows actual live music spectrum while withholding invalid THD");
         check(restored.analysisAnalogLoad.load()>0.1f && restored.analysisGainReduction.load()>0.1f,"live linear model is driven by actual DSP load and gain reduction");
-        if(argc>1) { dynamic_cast<PWMToneBoyAudioProcessorEditor*>(editor.get())->refreshReadoutsForDiagnostics(); auto image=editor->createComponentSnapshot(editor->getLocalBounds()); auto out=juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]).getChildFile("UI-M5-Music.png"); juce::FileOutputStream stream(out); stream.setPosition(0); stream.truncate(); juce::PNGImageFormat png; check(png.writeImageToStream(image,stream),"music spectrum snapshot saved"); }
+        if(argc>1) { auto image=editor->createComponentSnapshot(editor->getLocalBounds()); auto out=juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]).getChildFile("UI-M5-Music.png"); juce::FileOutputStream stream(out); stream.setPosition(0); stream.truncate(); juce::PNGImageFormat png; check(png.writeImageToStream(image,stream),"music spectrum snapshot saved"); }
     }
     set(restored,"analogMode",1);
     juce::MemoryBlock analogState; restored.getStateInformation(analogState); set(restored,"analogMode",0); restored.setStateInformation(analogState.getData(),int(analogState.getSize()));
@@ -497,7 +373,7 @@ int main(int argc,char** argv)
         }
         check(screen->getObservedBandCount()>20,"A observes real broadband input/output while D processing remains unchanged");
         for(int click=0;click<5;++click) screen->advanceView();
-        dynamic_cast<PWMToneBoyAudioProcessorEditor*>(editor.get())->refreshReadoutsForDiagnostics(); auto image=editor->createComponentSnapshot(editor->getLocalBounds()); auto out=juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]).getChildFile("UI-M4-A.png"); juce::FileOutputStream stream(out); stream.setPosition(0); stream.truncate(); juce::PNGImageFormat png; check(png.writeImageToStream(image,stream),"A-mode linear screen snapshot saved");
+        auto image=editor->createComponentSnapshot(editor->getLocalBounds()); auto out=juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]).getChildFile("UI-M4-A.png"); juce::FileOutputStream stream(out); stream.setPosition(0); stream.truncate(); juce::PNGImageFormat png; check(png.writeImageToStream(image,stream),"A-mode linear screen snapshot saved");
     }
     std::cout<<checks<<" checks, "<<failures<<" failures. Latency: "<<p.getLatencySamples()<<" samples.\n";
     return failures==0?EXIT_SUCCESS:EXIT_FAILURE;
