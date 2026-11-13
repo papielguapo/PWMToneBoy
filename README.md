@@ -1,12 +1,14 @@
 # PWM TONE BOY — PAPIELGUAPO
 
-**v1.4.0 · A con variación real de audio; D digital limpio y auditoría documentada.**
+**v1.5.0 · EXP y UP en RATIO para dinámica ascendente y buses paralelos.**
+
+Nuevas posiciones: **EXP 1:1.3 / 1:1.4** realzan por encima del umbral; **UP 1.3:1 / 1.4:1** elevan por debajo. Rodilla de 6 dB, realce máximo +12 dB y sin Auto-Gain fijo en esos modos. Las posiciones tradicionales, A y D se conservan. Revisa automatizaciones antiguas de RATIO: su escala normalizada pasa de 7 a 11 opciones.
 
 ![PWM TONE BOY](docs/images/PWM-TONE-BOY.png)
 
-- **[Descargar VST3 + Standalone — Windows x64](https://github.com/papielguapo/PWMToneBoy/releases/download/v1.4.0/PWM-TONE-BOY-Windows-x64.zip)**
+- **[Descargar VST3 + Standalone — Windows x64](https://github.com/papielguapo/PWMToneBoy/releases/download/v1.5.0/PWM-TONE-BOY-Windows-x64.zip)**
 - **[Guía completa en español](docs/GUIA-ES.md)**
-- **[Auditoría v1.4.0: hallazgos, correcciones, medidas y límites](docs/AUDITORIA-v1.4.0.md)**
+- **[Auditoría anterior v1.4.0: hallazgos, correcciones, medidas y límites](docs/AUDITORIA-v1.4.0.md)**
 
 ## A cambia la señal, no solo la LCD
 
@@ -26,7 +28,7 @@ La auditoría corrige además muestras NaN/Inf antes del oversampling, metadatos
 
 ## Comprobado
 
-**3.935 aserciones sin fallos y pluginval nivel 10 superado.** Medidas sin editor, 48 kHz, seno 0.2 pico, ratio 1:1, umbral 0 dB, KI OFF, dos segundos de asentamiento y cuatro medidos:
+**4.658 aserciones sin fallos y pluginval nivel 10 superado.** Medidas sin editor, 48 kHz, seno 0.2 pico, ratio 1:1, umbral 0 dB, KI OFF, dos segundos de asentamiento y cuatro medidos:
 
 | Frecuencia | Variación pico a pico de A | Variación de D |
 |---|---:|---:|

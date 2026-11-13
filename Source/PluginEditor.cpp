@@ -6,7 +6,7 @@ PWMToneBoyAudioProcessorEditor::PWMToneBoyAudioProcessorEditor(PWMToneBoyAudioPr
     setLookAndFeel(&look); addAndMakeVisible(panel); panel.setSize(420,680);
     panel.addAndMakeVisible(lcd); lcd.setBounds(98,113,240,176);
     setupKnob(threshold,"threshold",false,{49,365,110,110},"PWM threshold; double-click restores -18 dB");
-    setupKnob(ratio,"ratioIndex",true,{222,404,68,68},"B / Ratio: seven positions");
+    setupKnob(ratio,"ratioIndex",true,{222,404,68,68},"B / Ratio: compression, EXP upward expansion, UP upward compression; boost capped at +12 dB");
     setupKnob(decay,"decayIndex",true,{299,360,68,68},"A / Decay: six positions");
     setupKnob(clock,"clockRate",false,{161,505,48,48},"SELECT / PWM clock, 4 to 250 kHz");
     setupKnob(crush,"outputGain",false,{214,505,48,48},"Output level: -24 to +12 dB; double-click for 0 dB");

@@ -16,7 +16,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout PWMToneBoyAudioProcessor::cr
     using ID=juce::ParameterID;
     juce::AudioProcessorValueTreeState::ParameterLayout p;
     p.add(std::make_unique<juce::AudioParameterFloat>(ID{"threshold",1},"PWM Threshold",juce::NormalisableRange<float>(-42,0,0.1f),-18.0f));
-    p.add(std::make_unique<juce::AudioParameterChoice>(ID{"ratioIndex",1},"Ratio",juce::StringArray{"1.0:1","2.0:1","3.0:1","5.0:1","10.0:1","20.0:1","INF"},2));
+    p.add(std::make_unique<juce::AudioParameterChoice>(ID{"ratioIndex",1},"Ratio",juce::StringArray{"1.0:1","2.0:1","3.0:1","5.0:1","10.0:1","20.0:1","INF","EXP 1:1.3","EXP 1:1.4","UP 1.3:1","UP 1.4:1"},2));
     p.add(std::make_unique<juce::AudioParameterChoice>(ID{"decayIndex",1},"Decay",juce::StringArray{"100ms","200ms","400ms","800ms","1.6s","3.2s"},1));
     p.add(std::make_unique<juce::AudioParameterFloat>(ID{"clockRate",1},"PWM Clock (kHz)",juce::NormalisableRange<float>(4,250,0.1f,0.55f),120.0f));
     p.add(std::make_unique<juce::AudioParameterFloat>(ID{"dacCrush",1},"DAC Crush (%)",juce::NormalisableRange<float>(0,100,0.1f),0.0f));
@@ -82,7 +82,7 @@ void PWMToneBoyAudioProcessor::prepareToPlay(double rate,int block)
     }
     auto init=[this](auto& s,float v){ s.reset(highRate,0.02); s.setCurrentAndTargetValue(v); };
     analogSmooth.reset(highRate,0.04); analogSmooth.setCurrentAndTargetValue(controls[15]->load());
-    init(thresholdSmooth,parameter("threshold")); init(ratioSmooth,ratios[size_t(juce::jlimit(0,6,int(parameter("ratioIndex"))))]);
+    init(thresholdSmooth,parameter("threshold")); init(ratioSmooth,ratios[size_t(juce::jlimit(0,10,int(parameter("ratioIndex"))))]);
     init(decaySmooth,decays[size_t(juce::jlimit(0,5,int(parameter("decayIndex"))))]); init(clockSmooth,parameter("clockRate")); init(crushSmooth,0.0f);
     init(padSmooth,parameter("pad")>0.5f?0.25f:1); init(bypassSmooth,parameter("bypass"));
     init(eqSmooth,parameter("eqIn")); init(hpfSmooth,parameter("hpfIn")); init(linkSmooth,parameter("linkAutoGain"));
@@ -107,6 +107,19 @@ void PWMToneBoyAudioProcessor::reset()
 void PWMToneBoyAudioProcessor::releaseResources() { fileTransport.releaseResources(); }
 float PWMToneBoyAudioProcessor::computeSCurveGainLin(float env,float threshold,float ratio) noexcept
 {
+    if(ratio<1)
+    {
+        const float level=db(env), delta=level-threshold, width=6.0f;
+        const bool upward=ratio<0;
+        const float slope=upward?1-1/juce::jmax(1.0f,-ratio):1/juce::jmax(0.1f,ratio)-1;
+        const float distance=upward?-delta:delta;
+        float boost=0;
+        if(distance>=width*0.5f) boost=slope*distance;
+        else if(distance>-width*0.5f) { const auto k=distance+width*0.5f; boost=slope*k*k/(2*width); }
+        // Do not raise the noise floor indefinitely. Exact silence remains exact silence.
+        if(upward) { const auto t=juce::jlimit(0.0f,1.0f,(level+100)/20); boost*=t*t*(3-2*t); }
+        return juce::Decibels::decibelsToGain(juce::jlimit(0.0f,12.0f,boost));
+    }
     const float width=juce::jlimit(2.5f,10.5f,11-ratio*0.45f), delta=db(env)-threshold, slope=1-1/ratio;
     float reduction=0;
     if(delta>=width*0.5f) reduction=slope*delta;
@@ -175,7 +188,10 @@ void PWMToneBoyAudioProcessor::process(juce::AudioBuffer<float>& b,bool hostBypa
         if((std::bit_cast<uint32_t>(x)&0x7f800000u)==0x7f800000u) b.setSample(c,n,0);
         else if(x>16.0f || x< -16.0f) b.setSample(c,n,juce::jlimit(-16.0f,16.0f,x));
     }
-    thresholdSmooth.setTargetValue(controls[0]->load()); ratioSmooth.setTargetValue(ratios[size_t(juce::jlimit(0,6,int(controls[1]->load())))]);
+    thresholdSmooth.setTargetValue(controls[0]->load());
+    const auto selectedRatio=ratios[size_t(juce::jlimit(0,10,int(controls[1]->load())))];
+    if(selectedRatio<1 || ratioSmooth.getCurrentValue()<1) ratioSmooth.setCurrentAndTargetValue(selectedRatio);
+    else ratioSmooth.setTargetValue(selectedRatio);
     analogSmooth.setTargetValue(controls[15]->load());
     decaySmooth.setTargetValue(decays[size_t(juce::jlimit(0,5,int(controls[2]->load())))]); clockSmooth.setTargetValue(controls[3]->load()); crushSmooth.setTargetValue(0.0f);
     eqSmooth.setTargetValue(controls[5]->load()); hpfSmooth.setTargetValue(controls[6]->load()); linkSmooth.setTargetValue(controls[7]->load());
@@ -207,7 +223,7 @@ void PWMToneBoyAudioProcessor::processChunk(juce::AudioBuffer<float>& b,int star
         const auto clock=clockSmooth.getNextValue()*1000, crush=crushSmooth.getNextValue(), pad=padSmooth.getNextValue();
         const auto eq=eqSmooth.getNextValue(), hpf=hpfSmooth.getNextValue(), link=linkSmooth.getNextValue();
         const auto kiOn=kiSmooth.getNextValue(), pda=pdaSmooth.getNextValue(), weight=weightSmooth.getNextValue(), raw=rawSmooth.getNextValue();
-        const auto makeup=juce::Decibels::decibelsToGain((-threshold*(1-1/ratio))*0.54f);
+        const auto makeup=juce::Decibels::decibelsToGain((ratio>=1 ? -threshold*(1-1/ratio)*0.54f : 0.0f));
         const float bypass=bypassSmooth.getNextValue();
         const float analog=analogSmooth.getNextValue();
         clockPhase+=juce::jmin(double(clock)/highRate,1.0);
@@ -239,7 +255,7 @@ void PWMToneBoyAudioProcessor::processChunk(juce::AudioBuffer<float>& b,int star
             // Gain-domain ballistics reduce control ripple; stored program energy
             // lengthens recovery after sustained compression, independently of DECAY.
             const auto grRelease=coefficient(highRate,juce::jmax(35.0f,decayMs*0.30f)*(1.0f+3.0f*ch.releaseMemory));
-            ch.gainReduction=targetGr+(ch.gainReduction-targetGr)*(targetGr>ch.gainReduction?attack:grRelease);
+            ch.gainReduction=targetGr+(ch.gainReduction-targetGr)*((targetGr<0 ? targetGr<ch.gainReduction : targetGr>ch.gainReduction)?attack:grRelease);
             gain[c]=juce::Decibels::decibelsToGain(-ch.gainReduction);
             gates[c]=juce::jlimit(0.0f,1.0f,ch.fast*ch.fast*196);
             pdr=ch.releaseMemory;
@@ -264,7 +280,7 @@ void PWMToneBoyAudioProcessor::processChunk(juce::AudioBuffer<float>& b,int star
         for(int c=0;c<2;++c)
         {
             auto& ch=channels[size_t(c)]; const auto g=mix(gain[c],mean,link*0.85f);
-            const auto k2=kiOn*(0.008f+0.012f*(1-g))*gates[c];
+            const auto k2=kiOn*(0.008f+0.012f*juce::jmax(0.0f,1-g))*gates[c];
             auto x=processCraneTriodeEven(input[c]*g,ch.slow,k2,1+crush*1.8f);
             if(latch) ch.held=x;
             x=mix(x,ch.held,mix(crush,1.0f,raw));
@@ -308,7 +324,8 @@ void PWMToneBoyAudioProcessor::processChunk(juce::AudioBuffer<float>& b,int star
             auto out=processPhoenixSapphireCeiling(postMakeup[c]*limiting,ch.ceiling);
             if(std::abs(input[c])<1e-12f && std::abs(out)<1e-12f) out=0;
             high.setSample(c,int(n),out);
-            maxReduction=juce::jmax(maxReduction,-db(mix(gain[c],mean,link*0.85f)*limiting));
+            const auto signedReduction=-db(mix(gain[c],mean,link*0.85f)*limiting);
+            if(std::abs(signedReduction)>std::abs(maxReduction)) maxReduction=signedReduction;
             if(c==0) { frame.output=out; frame.reduction-=db(limiting); }
         }
         // One ramp value per base sample, stored in scratch only after upsampling has consumed it.
@@ -368,12 +385,12 @@ double PWMToneBoyAudioProcessor::responseForProfile(double frequency,double rate
     double magnitude=1; std::complex<double> analogResponse{1,0};
     for(size_t i=0;i<filters.size();++i) { const auto& filter=filters[i]; const auto response=(filter.b0+filter.b1*z+filter.b2*z*z)/(1.0+filter.a1*z+filter.a2*z*z); if(i<4) magnitude*=std::abs(response); else analogResponse*=response; }
     magnitude*=std::abs((1-double(blend))+double(blend)*analogResponse*double(analogGain));
-    return 20*std::log10(juce::jmax(1e-12,magnitude))+double(-threshold*(1-1/ratio)*0.54f+trim)+(pad?20*std::log10(0.25):0);
+    return 20*std::log10(juce::jmax(1e-12,magnitude))+double((ratio>=1 ? -threshold*(1-1/ratio)*0.54f : 0.0f)+trim)+(pad?20*std::log10(0.25):0);
 }
 double PWMToneBoyAudioProcessor::linearResponseDb(double frequency) const
 {
     if(parameter("bypass")>0.5f) return 0;
-    const auto ratio=ratios[size_t(juce::jlimit(0,6,int(parameter("ratioIndex"))))];
+    const auto ratio=ratios[size_t(juce::jlimit(0,10,int(parameter("ratioIndex"))))];
     return responseForProfile(frequency,analysisSampleRate.load(),parameter("eqIn")>0.5f,parameter("threshold"),ratio,parameter("outputGain"),parameter("pad")>0.5f,analysisAnalogMix.load(),analogProfileSnapshot(),analysisAGain.load())-analysisGainReduction.load();
 }
 juce::AudioProcessorParameter* PWMToneBoyAudioProcessor::getBypassParameter() const { return apvts.getParameter("bypass"); }

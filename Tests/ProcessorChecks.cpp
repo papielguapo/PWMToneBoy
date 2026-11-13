@@ -118,12 +118,43 @@ int main(int argc,char** argv)
     check(p.getParameters().size()==16,"sixteen parameters including output and A/D");
     check(std::abs(p.parameter("threshold")+18)<0.001f && p.parameter("ratioIndex")==2 && p.parameter("decayIndex")==1,"parameter defaults");
     check(p.getBypassParameter()==p.apvts.getParameter("bypass"),"host bypass mapping");
-    for(float r:PWMToneBoyAudioProcessor::ratios)
+    for(float r:std::array<float,7>{1,2,3,5,10,20,100})
     {
         float previous=1;
         for(int i=0;i<500;++i) { const auto g=p.computeSCurveGainLin(juce::Decibels::decibelsToGain(-70.0f+float(i)*0.2f),-18,r); check(g<=previous+1e-6f && g>0 && g<=1,"monotonic S-curve"); previous=g; }
         const auto knee=juce::jlimit(2.5f,10.5f,11-r*0.45f);
         for(float delta:{-knee/2,knee/2}) { const auto lo=p.computeSCurveGainLin(juce::Decibels::decibelsToGain(-18+delta-0.0001f),-18,r); const auto hi=p.computeSCurveGainLin(juce::Decibels::decibelsToGain(-18+delta+0.0001f),-18,r); check(std::abs(lo-hi)<0.0001f,"continuous knee joins"); }
+    }
+    for(float r:{1.0f/1.3f,1.0f/1.4f,-1.3f,-1.4f})
+    {
+        const auto gainAt=[&](float level){return juce::Decibels::gainToDecibels(p.computeSCurveGainLin(juce::Decibels::decibelsToGain(level),-24,r));};
+        check(gainAt(-24)>0,"new modes soft knee boosts at threshold");
+        check(r<0 ? gainAt(-36)>gainAt(-24) : gainAt(-12)>gainAt(-24),"EXP and UP act on correct side of threshold");
+        check(r<0 ? gainAt(-12)==0 : gainAt(-36)==0,"opposite side remains unity outside knee");
+        check(gainAt(-110)==0,"no upward gain at silence floor");
+        for(int i=-120;i<=24;++i) check(gainAt(float(i))>=0 && gainAt(float(i))<=12.001f,"new mode boost bounded to 12 dB");
+    }
+    for(int mode:{7,8,9,10})
+    {
+        double measured[2]{};
+        for(int path=0;path<2;++path)
+        {
+            auto probeOwner=std::make_unique<PWMToneBoyAudioProcessor>(); auto& probe=*probeOwner; set(probe,"ratioIndex",path?float(mode):0); set(probe,"threshold",-24); set(probe,"kiMode",0); set(probe,"eqIn",0); set(probe,"kWeightSc",0); set(probe,"pdaMode",0);
+            probe.prepareToPlay(48000,256); juce::AudioBuffer<float> b(2,256);
+            const float amplitude=mode<9?0.25f:0.01f;
+            for(int block=0;block<400;++block)
+            {
+                for(int n=0;n<256;++n) for(int c=0;c<2;++c) b.setSample(c,n,amplitude*std::sin(float((block*256+n)*juce::MathConstants<double>::twoPi*1000/48000)));
+                probe.processBlock(b,midi);
+                if(block>=300) for(int n=0;n<256;++n) measured[path]+=double(b.getSample(0,n))*b.getSample(0,n);
+            }
+            for(int selected:{0,7,8,9,10,6,2}) { set(probe,"ratioIndex",float(selected)); probe.processBlock(b,midi); finiteBuffer(b); }
+            set(probe,"ratioIndex",float(mode)); probe.reset(); b.clear(); probe.processBlock(b,midi); check(b.getMagnitude(0,256)==0,"new mode exact zero from rest");
+            juce::MemoryBlock state; probe.getStateInformation(state); auto restoredOwner=std::make_unique<PWMToneBoyAudioProcessor>(); auto& restored=*restoredOwner; restored.setStateInformation(state.getData(),int(state.getSize())); check(restored.parameter("ratioIndex")==float(mode),"new ratio state round trip");
+        }
+        const auto boost=10*std::log10(measured[1]/measured[0]);
+        std::cout<<"Mode "<<mode<<" measured boost="<<boost<<" dB\n";
+        check(boost>1 && boost<12,"EXP/UP boosts actual audio with headroom");
     }
     for(double sr:{32000.0,44100.0,48000.0,96000.0,192000.0})
     {
@@ -158,7 +189,7 @@ int main(int argc,char** argv)
     check(dry.getSample(0,p.getLatencySamples())==0.75f && dry.getSample(1,p.getLatencySamples())==-0.5f,"exact delayed bypass");
     set(p,"bypass",0); set(p,"threshold",-25.4f); p.editorWidth.store(630);
     juce::MemoryBlock state; p.getStateInformation(state);
-    PWMToneBoyAudioProcessor restored; restored.setStateInformation(state.getData(),int(state.getSize()));
+    auto restoredOwner=std::make_unique<PWMToneBoyAudioProcessor>(); auto& restored=*restoredOwner; restored.setStateInformation(state.getData(),int(state.getSize()));
     check(std::abs(restored.parameter("threshold")+25.4f)<0.01f && restored.editorWidth.load()==630,"state and window size roundtrip");
     const char bad[]{'b','a','d'}; restored.setStateInformation(bad,3); check(std::abs(restored.parameter("threshold")+25.4f)<0.01f,"corrupt state rejected");
     auto layout=p.getBusesLayout(); layout.inputBuses.set(0,juce::AudioChannelSet::mono()); layout.outputBuses.set(0,juce::AudioChannelSet::mono());
