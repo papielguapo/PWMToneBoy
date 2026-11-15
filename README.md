@@ -1,14 +1,16 @@
 # PWM TONE BOY — PAPIELGUAPO
 
-**Compresor estéreo con color armónico · Windows x64 · VST3 + Standalone · v1.4.2**
+**Compresor estéreo con color armónico · Windows x64 · VST3 + Standalone · v1.4.3**
 
 **Selector de abajo: A = ANALOG (analógico), D = DIGITAL (digital).** A aporta color y variación real; D omite esa rama y mantiene la ruta más limpia. KI es independiente. Ratio y DECAY por pasos, sin EXP ni UP.
 
 ![PWM TONE BOY](docs/images/PWM-TONE-BOY.png)
 
-- **[Descargar VST3 + Standalone — Windows x64](https://github.com/papielguapo/PWMToneBoy/releases/download/v1.4.2/PWM-TONE-BOY-Windows-x64.zip)**
+- **[Descargar VST3 + Standalone — Windows x64](https://github.com/papielguapo/PWMToneBoy/releases/download/v1.4.3/PWM-TONE-BOY-Windows-x64.zip)**
 - **[Guía completa en español](docs/GUIA-ES.md)**
-- **[Auditoría actual v1.4.2: pruebas, hallazgos y límites](docs/AUDITORIA-v1.4.2.md)**
+- **[Auditoría base y hallazgos](docs/AUDITORIA-v1.4.2.md)**
+- **[Corrección del analizador y pruebas de v1.4.3](docs/CORRECCION-ANALIZADOR-v1.4.3.md)**
+- **[Ficha técnica](docs/FICHA-TECNICA.md)**
 
 ## Cómo empezar en dos minutos
 
@@ -21,7 +23,7 @@
 
 Arrastra las perillas para ajustar; **doble clic en la perilla restaura su valor inicial**. En esta versión no se escriben valores por doble clic ni hay EXP/UP. Las lámparas blancas indican activado; BYPASS activado significa señal seca.
 
-**Límite conocido:** a 176,4/192 kHz el analizador puede perder telemetría; el problema afecta a la visualización, no al flujo de audio. Está pendiente de corregir y documentado en la auditoría. La documentación se actualizó el 15 de noviembre de 2026 sin cambiar los binarios.
+**Corregido en v1.4.3:** el analizador ya supera la prueba a 176,4/192 kHz, incluido el timer JUCE real a 192 kHz. [Corrección y pruebas](docs/CORRECCION-ANALIZADOR-v1.4.3.md). Las colas siguen siendo finitas ante bloqueos largos de GUI.
 
 ## A cambia la señal, no solo la LCD
 
@@ -41,7 +43,7 @@ La auditoría corrige además muestras NaN/Inf antes del oversampling, metadatos
 
 ## Comprobado
 
-**3.940 aserciones sin fallos y pluginval nivel 10 superado.** Medidas sin editor, 48 kHz, seno 0.2 pico, ratio 1:1, umbral 0 dB, KI OFF, dos segundos de asentamiento y cuatro medidos:
+**3.953 aserciones sin fallos y pluginval nivel 10 superado.** Medidas sin editor, 48 kHz, seno 0.2 pico, ratio 1:1, umbral 0 dB, KI OFF, dos segundos de asentamiento y cuatro medidos:
 
 | Frecuencia | Variación pico a pico de A | Variación de D |
 |---|---:|---:|

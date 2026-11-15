@@ -1,5 +1,7 @@
 # Auditoría de PWM TONE BOY v1.4.2
 
+> **Actualización:** el hallazgo del analizador descrito en este informe histórico queda corregido en [v1.4.3](CORRECCION-ANALIZADOR-v1.4.3.md), con reproducción antes/después y prueba del timer real.
+
 Fecha: **15 de noviembre de 2026**. Autor del plugin: **PAPIELGUAPO**. Código de audio/GUI auditado: commit `dbf4269`; esta revisión actualiza documentación, sin modificar el ejecutable.
 
 ## Resultado

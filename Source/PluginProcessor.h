@@ -43,6 +43,9 @@ public:
     AnalogProfile analogProfileSnapshot() const noexcept;
     static double responseForProfile(double frequency,double rate,bool eq,float threshold,float ratio,float outputDb,bool pad,float blend,const AnalogProfile&,float analogGain);
     float parameter(const char* id) const { return apvts.getRawParameterValue(id)->load(); }
+    // Enough nominal diagnostic throughput for 768 kHz at a 30 Hz UI refresh.
+    // Storage is allocated with the processor, never in processBlock.
+    static constexpr int diagnosticCapacity=65536;
     int readScope(ToneBoyScopeFrame* destination, int maximum);
     double linearResponseDb(double frequency) const;
     static double linearResponseDb(double frequency,double rate,bool eq,float threshold,float ratio,float outputDb,bool pad,bool analog=false,float load=0,float modeMix=-1);
@@ -95,8 +98,8 @@ private:
     double sampleRate{44100}, highRate{176400}, clockPhase{}, demoTime{};
     int maximumBlock{512}, latency{}, scopeDivider{};
     float fastAttack{}, snapAttack{}, fastRelease{}, rmsCoefficient{}, memoryAttack{}, memoryRelease{}, limiterRelease{};
-    juce::AbstractFifo scopeFifo{8192};
-    std::array<ToneBoyScopeFrame,8192> scopeStorage{};
+    juce::AbstractFifo scopeFifo{diagnosticCapacity};
+    std::vector<ToneBoyScopeFrame> scopeStorage=std::vector<ToneBoyScopeFrame>(diagnosticCapacity);
     juce::AudioFormatManager formatManager;
     juce::AudioTransportSource fileTransport;
     std::unique_ptr<juce::AudioFormatReaderSource> fileReader;

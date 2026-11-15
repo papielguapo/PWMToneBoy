@@ -165,7 +165,9 @@ private:
     }
     void timerCallback() override
     {
-        std::array<ToneBoyScopeFrame,4096> frames{};
+        // Drain the entire bounded backlog, rather than imposing a fixed
+        // 4096*30 frames/s bottleneck. This buffer is allocated at editor creation.
+        auto& frames=diagnosticFrames;
         const int count=p.readScope(frames.data(),int(frames.size()));
         const auto rate=p.analysisSampleRate.load();
         const auto overruns=p.scopeOverruns.load();
@@ -222,6 +224,7 @@ private:
         grHistory[size_t(grWrite)]=p.reductionDb.load(); grWrite=(grWrite+1)%120;
         repaint();
     }
+    std::vector<ToneBoyScopeFrame> diagnosticFrames=std::vector<ToneBoyScopeFrame>(PWMToneBoyAudioProcessor::diagnosticCapacity);
     juce::Image dotTexture;
     ToneBoyHarmonicWorker harmonicWorker;
     uint64_t analysisEpoch{};

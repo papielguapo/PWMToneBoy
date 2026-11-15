@@ -1,4 +1,4 @@
-# Guía de uso — PWM TONE BOY v1.4.2
+# Guía de uso — PWM TONE BOY v1.4.3
 
 **Creado por PAPIELGUAPO · Windows x64 · VST3 + Standalone**
 
@@ -23,7 +23,7 @@ Arrastra las perillas para ajustar; **doble clic en la perilla restaura su valor
 
 ## Descargar e instalar
 
-1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.4.2](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.4.2).
+1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.4.3](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.4.3).
 2. Descomprime el ZIP. Copia la carpeta completa `VST3/PWM TONE BOY.vst3` a `C:\Program Files\Common Files\VST3`. Cierra los programas que estén usando el plugin antes de sustituirlo. Windows puede solicitar permisos de administrador.
 3. Vuelve a escanear los plugins en tu DAW y carga **PWM TONE BOY**, fabricante **PAPIELGUAPO**.
 4. Para usarlo sin DAW, abre `Standalone/PWM TONE BOY.exe`.
@@ -46,7 +46,7 @@ El ZIP también incluye esta guía, las imágenes de la interfaz y de los nuevos
 | **PWM THRESHOLD** | Fija el umbral del compresor. Al bajarlo, una mayor parte de la señal entra en compresión. La rodilla hace que la transición alrededor del umbral sea gradual. El display inferior muestra dB. | −42 a 0 dB; inicial **−18 dB**. |
 | **B — RATIO** | Define la intensidad de la compresión por encima de la rodilla. 1:1 desactiva la reducción del compresor, pero conserva filtros, KI si está activo, Auto-Gain según su fórmula y protección de picos. INF es una relación interna de 100:1. | **1:1, 2:1, 3:1, 5:1, 10:1, 20:1, INF**; inicial **3:1**. |
 | **A — DECAY** | Ajusta la recuperación base de la dinámica. Valores cortos recuperan antes y largos mantienen más tiempo la reducción. El tiempo real también depende de la memoria de la compresión: no es un cronómetro fijo de vuelta a cero. | **100, 200, 400, 800 ms, 1.6 y 3.2 s**; inicial **200 ms**. |
-| **SELECT** | Control de reloj PWM heredado. Conserva su posición y lectura, pero **no modifica el audio en v1.4.2**, porque sample-and-hold y DAC están desactivados. | 4–250 kHz; inicial **120 kHz**. |
+| **SELECT** | Control de reloj PWM heredado. Conserva su posición y lectura, pero **no modifica el audio en v1.4.3**, porque sample-and-hold y DAC están desactivados. | 4–250 kHz; inicial **120 kHz**. |
 | **OUTPUT** | Sube o baja el nivel procesado después de Auto-Gain y de la protección de picos. No modifica el umbral ni el ratio. Los cambios se suavizan durante 20 ms. Ganancias positivas pueden superar 0 dBFS después de la protección; comprueba el nivel de salida del DAW. En BYPASS se escucha la señal seca, sin OUTPUT. | **−24 a +12 dB**; inicial **0 dB**. |
 
 ## Palancas y botones
@@ -227,4 +227,4 @@ Estos ajustes son puntos de partida para escuchar, no presets medidos como ópti
 
 **No uses los piquitos como objetivo sonoro.** M4 en A combina transferencia observada y modelo; una señal estable puede dar una curva estable. M5 muestra espectro con música, pero THD/THD+N solo son interpretables con un tono válido.
 
-**Tasas altas:** la auditoría detecta un límite pendiente de la telemetría a 176,4/192 kHz. Puede perder datos o reiniciar el analizador aunque el audio continúe. Consulta la [auditoría actual](AUDITORIA-v1.4.2.md). La protección de picos tampoco garantiza un techo después de OUTPUT: revisa la salida del DAW.
+**Tasas altas:** v1.4.3 corrige la pérdida de telemetría reproducida a 176,4/192 kHz. Incluye pruebas con pausas de GUI y el timer JUCE real a 192 kHz. Los bloqueos suficientemente largos aún pueden desbordar una cola finita. Consulta el [informe de corrección](CORRECCION-ANALIZADOR-v1.4.3.md). OUTPUT sigue después de la protección de picos.

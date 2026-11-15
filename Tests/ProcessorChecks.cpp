@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <bit>
 #include <limits>
+#include <thread>
 
 namespace {
 int failures=0, checks=0;
@@ -382,6 +383,73 @@ int main(int argc,char** argv)
         check(screen->getObservedBandCount()>20,"A observes real broadband input/output while D processing remains unchanged");
         for(int click=0;click<5;++click) screen->advanceView();
         auto image=editor->createComponentSnapshot(editor->getLocalBounds()); auto out=juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]).getChildFile("UI-M4-A.png"); juce::FileOutputStream stream(out); stream.setPosition(0); stream.truncate(); juce::PNGImageFormat png; check(png.writeImageToStream(image,stream),"A-mode linear screen snapshot saved");
+    }
+    // Produce audio at its actual sample-rate budget; consume only once per
+    // 1/30 second of audio, with two missed refreshes to model a short GUI stall.
+    for(double rate:{176400.0,192000.0})
+    {
+        auto probe=std::make_unique<PWMToneBoyAudioProcessor>(); set(*probe,"ratioIndex",0); set(*probe,"threshold",0); set(*probe,"kiMode",0); set(*probe,"analogMode",1);
+        probe->prepareToPlay(rate,512); auto probeEditor=std::unique_ptr<juce::AudioProcessorEditor>(probe->createEditor());
+        auto* lcd=findLcd(probeEditor.get()); check(lcd!=nullptr,"high-rate editor exposes diagnostics"); if(!lcd) continue;
+        juce::AudioBuffer<float> b(2,512); uint32_t stimulus=0xD34259u; int64_t position=0; bool fullyDrained=true;
+        const auto initialLoss=probe->scopeOverruns.load();
+        for(int phase=0;phase<2;++phase)
+        {
+            if(phase==1) set(*probe,"analogMode",0);
+            for(int tick=0;tick<30;++tick)
+            {
+                int remaining=int(rate/30);
+                while(remaining>0)
+                {
+                    const int count=std::min(512,remaining); b.setSize(2,count,false,false,true);
+                    for(int n=0;n<count;++n,++position)
+                    {
+                        stimulus=stimulus*1664525u+1013904223u;
+                        const auto value=phase==0?float(int32_t(stimulus))/2147483648.0f*0.24f:float(0.2*std::sin(tau*997.3*double(position)/rate));
+                        for(int c=0;c<2;++c) b.setSample(c,n,value);
+                    }
+                    probe->processBlock(b,midi); remaining-=count;
+                }
+                if(tick==8 || tick==9) continue;
+                if(tick%5==0) juce::Thread::sleep(160);
+                lcd->refreshDiagnostics(); ToneBoyScopeFrame extra; fullyDrained &= probe->readScope(&extra,1)==0;
+            }
+            if(phase==0) check(lcd->getObservedBandCount()>20,"A H1 transfer survives high-rate timer budget and brief GUI stalls");
+            else check(lcd->getHarmonicResult().status==ToneBoyHarmonicResult::Status::valid && std::abs(lcd->getHarmonicResult().frequency-997.3)<1,"harmonic tone analysis stabilizes at high sample rates");
+        }
+        const auto losses=probe->scopeOverruns.load()-initialLoss;
+        check(losses==0,"no telemetry loss at 176.4/192 kHz with 30 Hz consumption and two skipped refreshes");
+        check(fullyDrained,"each high-rate refresh drains the complete diagnostic backlog");
+        std::cout<<"High-rate diagnostics "<<rate<<" Hz: overruns="<<losses<<" fullyDrained="<<fullyDrained<<"\n";
+    }
+    // Exercise the actual JUCE 30 Hz timer and message loop, while another
+    // thread supplies timestamp-paced audio as a host would (no audio device).
+    {
+        auto probe=std::make_unique<PWMToneBoyAudioProcessor>(); set(*probe,"ratioIndex",0); set(*probe,"threshold",0); set(*probe,"kiMode",0); set(*probe,"analogMode",1);
+        probe->prepareToPlay(192000,512); auto liveEditor=std::unique_ptr<juce::AudioProcessorEditor>(probe->createEditor());
+        auto* liveLcd=findLcd(liveEditor.get()); std::atomic<bool> finished{false}; int64_t produced=0;
+        std::thread producer([&]
+        {
+            juce::AudioBuffer<float> b(2,512); juce::MidiBuffer messages; uint32_t stimulus=0x781123u;
+            const auto began=juce::Time::getMillisecondCounterHiRes();
+            while(!finished.load())
+            {
+                const auto target=int64_t((juce::Time::getMillisecondCounterHiRes()-began)*192.0);
+                while(produced<target && !finished.load())
+                {
+                    const int count=int(std::min<int64_t>(512,target-produced)); b.setSize(2,count,false,false,true);
+                    for(int n=0;n<count;++n) {stimulus=stimulus*1664525u+1013904223u; const auto x=float(int32_t(stimulus))/2147483648.0f*0.24f; for(int c=0;c<2;++c) b.setSample(c,n,x);}
+                    probe->processBlock(b,messages); produced+=count;
+                }
+                juce::Thread::sleep(1);
+            }
+        });
+        juce::Timer::callAfterDelay(2000,[&]{finished.store(true); juce::MessageManager::getInstance()->stopDispatchLoop();});
+        juce::MessageManager::getInstance()->runDispatchLoop(); finished.store(true); producer.join();
+        check(produced>192000,"wall-clock producer supplied more than one second of high-rate audio");
+        check(probe->scopeOverruns.load()==0,"actual 30 Hz JUCE timer consumes 192 kHz audio without telemetry loss");
+        check(liveLcd && liveLcd->getObservedBandCount()>20,"actual timer sustains A transfer estimation at 192 kHz");
+        std::cout<<"Live JUCE timer 192000 Hz: produced="<<produced<<" overruns="<<probe->scopeOverruns.load()<<" observedBands="<<(liveLcd?liveLcd->getObservedBandCount():0)<<"\n";
     }
     std::cout<<checks<<" checks, "<<failures<<" failures. Latency: "<<p.getLatencySamples()<<" samples.\n";
     return failures==0?EXIT_SUCCESS:EXIT_FAILURE;
