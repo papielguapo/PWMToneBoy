@@ -1,8 +1,8 @@
 # Ficha técnica — PWM TONE BOY
 
-**Versión 1.4.3 · PAPIELGUAPO · Windows x64**
+**Versión 1.4.4 · PAPIELGUAPO · Windows x64**
 
-Compresor mono/estéreo con rodilla suave, recuperación dependiente del programa y color armónico opcional. Diseño original inspirado en comportamientos analógicos; no se ha calibrado contra un Crane Song real ni se presenta como réplica certificada.
+Compresor mono/estéreo con rodilla suave, recuperación dependiente del programa y color armónico opcional. Diseño propio que combina una referencia funcional de dinámica tipo PIE con ideas de color/PDA/KI del STC-8; no se ha calibrado contra un Crane Song real ni se presenta como réplica certificada.
 
 ![PWM TONE BOY](images/PWM-TONE-BOY.png)
 
@@ -25,17 +25,17 @@ Compresor mono/estéreo con rodilla suave, recuperación dependiente del program
 | Control | Valores |
 |---|---|
 | THRESHOLD | −42 a 0 dB; inicial −18 dB |
-| RATIO | 1:1, 2:1, 3:1, 5:1, 10:1, 20:1 e INF (internamente 100:1); inicial 3:1 |
+| RATIO | **1:5.0, 1:3.0, 1:2.0, 1:1, 2:1, 3:1, 5:1, 10:1 y LIM**; inicial 3:1 |
 | DECAY / recuperación nominal | 100, 200, 400, 800, 1600 y 3200 ms; inicial 200 ms |
-| Ataque | Nominal 2,2 ms; PDA puede acortarlo hacia 0,35 ms cerca de sobrecarga |
-| Recuperación real | Depende de DECAY, energía/memoria del programa y evolución del detector |
-| Auto-Gain | Compensación fija dependiente de umbral/ratio; siempre activa, no es igualación de sonoridad |
+| Ataque | Compresión nominal 2,2 ms; PDA puede acortarlo hacia 0,35 ms. **LIM: 0,1 ms** nominal, sin lookahead |
+| Recuperación real | Una etapa principal en ganancia; memoria acotada hasta +15% de la constante nominal. Detector con estabilización de picos de 12 ms y caída de 25 ms |
+| Auto-Gain | Compensación por umbral/ratio en compresión/LIM; **0 dB fijo en las tres expansiones**. No iguala sonoridad |
 | OUTPUT | −24 a +12 dB; inicial 0 dB; después de la protección de picos |
 | BYPASS | Señal seca con compensación de latencia y transición suave |
 | PAD | Entrada ×0,25, aproximadamente −12,04 dB |
 | LINK | Ganancia del compresor 85% compartida / 15% independiente; protección de picos enlazada al activarlo |
 
-No incluye EXP, UP, dry/wet interno, ratio/release continuos ni escritura numérica por doble clic. Doble clic en una perilla restaura su valor inicial.
+Las posiciones 1:5/1:3/1:2 son **expansiones hacia arriba**, con rodilla de 3 dB y realce máximo +24 dB. No hay compresión ascendente UP ni menús EXP/UP, dry/wet interno, ratio/release continuos o escritura numérica por doble clic. Doble clic en una perilla restaura su valor inicial.
 
 ## Selector inferior A / D
 
@@ -69,6 +69,6 @@ v1.4.3 corrige el cuello de botella de telemetría a 176,4/192 kHz mediante cola
 
 La protección de picos actúa aproximadamente a −0,45 dBFS **antes de OUTPUT**; no es garantía true-peak. OUTPUT positivo puede superar 0 dBFS. Auto-Gain no iguala LUFS ni volumen percibido. No sustituye una comprobación de nivel final.
 
-**Validación:** 3.953 aserciones sin fallos y pluginval nivel 10. Prueba antes/después a 176,4/192 kHz y temporizador JUCE real a 192 kHz, con productor de audio según reloj. No equivale a probar todos los DAWs ni dispositivos físicos.
+**Validación:** 3.505 aserciones sin fallos y pluginval nivel 10. Prueba antes/después a 176,4/192 kHz y temporizador JUCE real a 192 kHz, con productor de audio según reloj. No equivale a probar todos los DAWs ni dispositivos físicos.
 
-[Guía de uso](GUIA-ES.md) · [Corrección y pruebas](CORRECCION-ANALIZADOR-v1.4.3.md) · [Auditoría base](AUDITORIA-v1.4.2.md)
+[Dinámica y pruebas v1.4.4](DINAMICA-v1.4.4.md) · [Guía de uso](GUIA-ES.md) · [Corrección y pruebas](CORRECCION-ANALIZADOR-v1.4.3.md) · [Auditoría base](AUDITORIA-v1.4.2.md)

@@ -32,6 +32,8 @@ public:
     void setStateInformation(const void*, int) override;
     juce::AudioProcessorParameter* getBypassParameter() const override;
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
+    static float compressionSlope(float ratio) noexcept;
+    static float makeupDb(float threshold,float ratio) noexcept;
     static float computeSCurveGainLin(float envelope, float threshold, float ratio) noexcept;
     static float processCraneTriodeEven(float x, float slow, float k2, float grid) noexcept;
     static float processPhoenixSapphireCeiling(float x, float& history) noexcept;
@@ -59,7 +61,7 @@ public:
     juce::AudioProcessorValueTreeState apvts;
     std::atomic<float> inputDb{-100}, outputDb{-100}, reductionDb{0}, gateMeter{0}, kiMeter{0}, pdrMeter{0};
     std::atomic<int> editorWidth{420}, testSource{0};
-    static constexpr std::array<float, 7> ratios{1,2,3,5,10,20,100};
+    static constexpr std::array<float, 9> ratios{0.2f,1.0f/3.0f,0.5f,1,2,3,5,10,1000};
     static constexpr std::array<float, 6> decays{100,200,400,800,1600,3200};
 private:
     struct Biquad
@@ -74,7 +76,7 @@ private:
     {
         Biquad scHpf, reconstruction, infra1, infra2, phoenix, analogLow, analogHigh;
         float fast{}, slow{}, rms{}, previousSc{}, held{}, ceiling{}, quietSeconds{};
-        float gainReduction{}, releaseMemory{}, limiterGain{1.0f}, peakHold{};
+        float gainReduction{}, releaseMemory{}, limiterGain{1.0f}, peakHold{}, detectorHold{};
         std::array<float, 512> dryDelay{};
         int dryPosition{};
     };

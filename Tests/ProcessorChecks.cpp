@@ -15,6 +15,8 @@ void check(bool condition,const char* description)
 }
 void set(PWMToneBoyAudioProcessor& p,const char* id,float v)
 {
+    // Existing fixtures express the old ratio positions; map them to the new layout.
+    if(juce::String(id)=="ratioIndex") {constexpr int mapping[]{3,4,5,6,7,7,8}; v=float(mapping[juce::jlimit(0,6,int(v))]);}
     auto* a=p.apvts.getParameter(id); a->setValueNotifyingHost(a->convertTo0to1(v));
 }
 void finiteBuffer(const juce::AudioBuffer<float>& b)
@@ -24,7 +26,7 @@ void finiteBuffer(const juce::AudioBuffer<float>& b)
     check(finite,"finite audio"); check(bounded,"bounded audio");
 }
 struct Spectrum { double thdDb{}, h2Db{}, h3Db{}, imdDb{}, gainDb{}, modelDb{}; };
-Spectrum measure(bool ki, bool compressed=false, bool twoTone=false, float frequency=1000,bool analog=false,float amplitude=-1,int ratioOverride=-1,bool standardDetector=true,int pdaOverride=-1,int hscOverride=-1)
+Spectrum measure(bool ki, bool compressed=false, bool twoTone=false, float frequency=1000,bool analog=false,float amplitude=-1,int ratioOverride=-1,bool standardDetector=true,int pdaOverride=-1,int hscOverride=-1,int expansionFactor=0)
 {
     auto processor=std::make_unique<PWMToneBoyAudioProcessor>();
     set(*processor,"analogMode",analog?1.0f:0.0f);
@@ -33,6 +35,7 @@ Spectrum measure(bool ki, bool compressed=false, bool twoTone=false, float frequ
     if(!standardDetector) { set(*processor,"pdaMode",0); set(*processor,"kWeightSc",0); set(*processor,"linkAutoGain",0); set(*processor,"decayIndex",0); }
     if(pdaOverride>=0) set(*processor,"pdaMode",float(pdaOverride));
     if(hscOverride>=0) set(*processor,"kWeightSc",float(hscOverride));
+    if(expansionFactor) {auto* r=processor->apvts.getParameter("ratioIndex");r->setValueNotifyingHost(r->convertTo0to1(expansionFactor==2?2.0f:expansionFactor==3?1.0f:0.0f));}
     const double peak=amplitude>=0?amplitude:(compressed?0.5:0.2);
     processor->prepareToPlay(48000,256);
     juce::AudioBuffer<float> buffer(2,256); juce::MidiBuffer midi;
@@ -110,21 +113,87 @@ float recovery(bool sustained)
     return processor->reductionDb.load();
 }
 
+float heavyRecovery(int decayIndex)
+{
+    auto probe=std::make_unique<PWMToneBoyAudioProcessor>();set(*probe,"threshold",-42);set(*probe,"ratioIndex",4);set(*probe,"decayIndex",float(decayIndex));set(*probe,"kiMode",0);set(*probe,"eqIn",0);
+    probe->prepareToPlay(48000,128);juce::AudioBuffer<float> b(2,128);juce::MidiBuffer midi;
+    for(int start=0;start<62400;start+=128)
+    {
+        const int count=std::min(128,62400-start);b.setSize(2,count,false,false,true);
+        for(int n=0;n<count;++n)for(int c=0;c<2;++c)b.setSample(c,n,start+n<48000?float(0.5*std::sin(juce::MathConstants<double>::twoPi*1000*(start+n)/48000)):0);
+        probe->processBlock(b,midi);
+    }
+    return probe->reductionDb.load();
+}
+
 }
 int main(int argc,char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juce;
     juce::MidiBuffer midi;
+    if(argc>1 && juce::String(argv[1])=="--drum-diagnostics")
+    {
+        for(float threshold:{-18.0f,-30.0f,-42.0f})
+        {
+            auto probe=std::make_unique<PWMToneBoyAudioProcessor>(); set(*probe,"ratioIndex",4); set(*probe,"decayIndex",0); set(*probe,"threshold",threshold); set(*probe,"kiMode",0); set(*probe,"eqIn",0);
+            probe->prepareToPlay(48000,48); juce::AudioBuffer<float> b(2,48); uint32_t seed=0x53319u;
+            double minimum=100,maximum=0,sum=0; int measured=0; std::array<double,5> recoveryLevels{};
+            for(int block=0;block<6000;++block)
+            {
+                for(int n=0;n<48;++n)
+                {
+                    const double t=double(block*48+n)/48000, beat=std::fmod(t,0.5),snare=std::fmod(t+0.25,0.5),hat=std::fmod(t,0.125);
+                    seed=seed*1664525u+1013904223u; const float noise=float(int32_t(seed))/2147483648.0f;
+                    const float x=t<5?float(0.5*std::sin(juce::MathConstants<double>::twoPi*70*t)*std::exp(-beat/0.045)+0.20*noise*std::exp(-snare/0.035)+0.06*noise*std::exp(-hat/0.008)):0;
+                    for(int c=0;c<2;++c)b.setSample(c,n,x);
+                }
+                probe->processBlock(b,midi);
+                const auto gr=double(probe->reductionDb.load());
+                if(block>=4000 && block<5000) {minimum=std::min(minimum,gr); maximum=std::max(maximum,gr);sum+=gr;++measured;}
+                if(block==5009)recoveryLevels[0]=gr; if(block==5049)recoveryLevels[1]=gr;if(block==5099)recoveryLevels[2]=gr;if(block==5299)recoveryLevels[3]=gr;if(block==5999)recoveryLevels[4]=gr;
+            }
+            std::cout<<"Synthetic drum loop 10:1 release100 threshold="<<threshold<<" GR min/mean/max="<<minimum<<"/"<<sum/measured<<"/"<<maximum<<" dB; after silence 10/50/100/300/1000ms=";
+            for(auto gr:recoveryLevels)std::cout<<gr<<" ";std::cout<<"dB\n";
+        }
+        return 0;
+    }
     PWMToneBoyAudioProcessor p;
     check(p.getParameters().size()==16,"sixteen parameters including output and A/D");
-    check(std::abs(p.parameter("threshold")+18)<0.001f && p.parameter("ratioIndex")==2 && p.parameter("decayIndex")==1,"parameter defaults");
+    check(std::abs(p.parameter("threshold")+18)<0.001f && p.parameter("ratioIndex")==5 && p.parameter("decayIndex")==1,"parameter defaults");
     check(p.getBypassParameter()==p.apvts.getParameter("bypass"),"host bypass mapping");
     for(float r:PWMToneBoyAudioProcessor::ratios)
     {
+        if(r<1) continue;
         float previous=1;
         for(int i=0;i<500;++i) { const auto g=p.computeSCurveGainLin(juce::Decibels::decibelsToGain(-70.0f+float(i)*0.2f),-18,r); check(g<=previous+1e-6f && g>0 && g<=1,"monotonic S-curve"); previous=g; }
         const auto knee=juce::jlimit(2.5f,10.5f,11-r*0.45f);
         for(float delta:{-knee/2,knee/2}) { const auto lo=p.computeSCurveGainLin(juce::Decibels::decibelsToGain(-18+delta-0.0001f),-18,r); const auto hi=p.computeSCurveGainLin(juce::Decibels::decibelsToGain(-18+delta+0.0001f),-18,r); check(std::abs(lo-hi)<0.0001f,"continuous knee joins"); }
+    }
+    {
+        const auto outputDb=[&](float input,float ratio){return input+juce::Decibels::gainToDecibels(p.computeSCurveGainLin(juce::Decibels::decibelsToGain(input),-30,ratio));};
+        check(std::abs(outputDb(-10,1000)-outputDb(-20,1000))<0.0001f,"LIM has a truly flat settled transfer above its knee");
+        check(std::abs((outputDb(-27.5f,0.2f)-outputDb(-28,0.2f))/0.5f-5)<0.001f,"1:5 has upward expansion slope five above threshold before boost cap");
+        check(std::abs(outputDb(-36,0.2f)+36)<0.0001f,"1:5 leaves levels below the knee unchanged");
+        check(std::abs(outputDb(-10,0.2f)-(-10+24))<0.001f,"1:5 boost is bounded to 24 dB");
+        check(p.makeupDb(-42,0.2f)==0,"expansion does not receive negative make-up attenuation");
+        constexpr int mapping[]{3,4,5,6,7,7,8};
+        for(int old=0;old<7;++old)
+        {
+            juce::ValueTree state("PWMToneBoyState"),child("PARAM"); child.setProperty("id","ratioIndex",nullptr);child.setProperty("value",old,nullptr);state.addChild(child,-1,nullptr);
+            juce::MemoryBlock bytes; auto xml=state.createXml(); juce::AudioProcessor::copyXmlToBinary(*xml,bytes);
+            auto migrated=std::make_unique<PWMToneBoyAudioProcessor>(); migrated->setStateInformation(bytes.getData(),int(bytes.getSize()));
+            check(migrated->parameter("ratioIndex")==float(mapping[old]),"legacy ratio state migrates, including removed 20:1 to 10:1");
+        }
+        for(int old=0;old<7;++old)
+        {
+            juce::ValueTree state("PWMToneBoyState"),child("PARAM");state.setProperty("ratioLayout",1,nullptr);child.setProperty("id","ratioIndex",nullptr);child.setProperty("value",old,nullptr);state.addChild(child,-1,nullptr);
+            juce::MemoryBlock bytes;auto xml=state.createXml();juce::AudioProcessor::copyXmlToBinary(*xml,bytes);auto migrated=std::make_unique<PWMToneBoyAudioProcessor>();migrated->setStateInformation(bytes.getData(),int(bytes.getSize()));
+            constexpr int intermediate[]{0,3,4,5,6,7,8};
+            check(migrated->parameter("ratioIndex")==float(intermediate[old]),"intermediate seven-position layout migrates without changing selected function");
+        }
+        auto fresh=std::make_unique<PWMToneBoyAudioProcessor>(); auto* ratio=fresh->apvts.getParameter("ratioIndex");ratio->setValueNotifyingHost(ratio->convertTo0to1(0));
+        juce::MemoryBlock state;fresh->getStateInformation(state);fresh->setStateInformation(state.getData(),int(state.getSize()));
+        check(fresh->parameter("ratioIndex")==0,"new expansion state is not remapped as legacy unity");
     }
     for(double sr:{32000.0,44100.0,48000.0,96000.0,192000.0})
     {
@@ -212,8 +281,46 @@ int main(int argc,char** argv)
         check(digitalKi.thdDb < -35 && digitalKi.h2Db>digitalKi.h3Db+18,"D with KI keeps gentle H2 dominant for every PDA/H-SC combination");
         std::cout<<"D PDA="<<pdaState<<" H-SC="<<hscState<<" THD="<<digital.thdDb<<"dB\n";
     }
+    const auto limLow=measure(false,true,false,1000,false,0.3f,6),limHigh=measure(false,true,false,1000,false,0.6f,6);
+    const auto tenLow=measure(false,true,false,1000,false,0.3f,4),tenHigh=measure(false,true,false,1000,false,0.6f,4);
+    const auto inputStep=20*std::log10(2.0);
+    const auto limiterStep=limHigh.gainDb-limLow.gainDb+inputStep,tenStep=tenHigh.gainDb-tenLow.gainDb+inputStep;
+    check(std::abs(limiterStep)<0.1,"actual LIM settles to constant output for a 6 dB input increase");
+    check(std::abs(tenStep-inputStep/10)<0.1,"actual 10:1 converts a 6 dB input increase to approximately 0.6 dB");
+    const auto expLow=measure(false,true,false,1000,false,0.16f,-1,false,-1,-1,5),expHigh=measure(false,true,false,1000,false,0.175f,-1,false,-1,-1,5);
+    const auto expInputStep=20*std::log10(0.175/0.16),expOutputStep=expHigh.gainDb-expLow.gainDb+expInputStep;
+    check(std::abs(expOutputStep/expInputStep-5)<0.1,"actual 1:5 audio follows upward-expansion slope before safety cap");
+    const auto fastHeavy=heavyRecovery(0),slowHeavy=heavyRecovery(3);
+    check(fastHeavy<5,"100ms recovery releases severe compression to under 5 dB after 300ms silence");
+    check(slowHeavy>fastHeavy+8,"DECAY still provides genuinely slower recovery at 800ms");
+    std::cout<<"Dynamics: input step="<<inputStep<<" dB LIM output step="<<limiterStep<<" dB; 10:1 output step="<<tenStep<<" dB; 1:5 measured slope="<<expOutputStep/expInputStep<<"; heavy recovery after 300ms fast/slow="<<fastHeavy<<"/"<<slowHeavy<<" dB\n";
+    for(int factor:{2,3})
+    {
+        const auto low=measure(false,true,false,1000,false,0.16f,-1,false,-1,-1,factor),high=measure(false,true,false,1000,false,0.175f,-1,false,-1,-1,factor);
+        const auto step=20*std::log10(0.175/0.16),slope=(high.gainDb-low.gainDb+step)/step;
+        check(std::abs(slope-factor)<0.1,"actual 1:2 and 1:3 positions have their requested expansion slopes");
+        std::cout<<"Expansion 1:"<<factor<<" measured slope="<<slope<<"\n";
+    }
+    const auto initialReduction=[&](int selection)
+    {
+        auto probe=std::make_unique<PWMToneBoyAudioProcessor>();set(*probe,"threshold",-18);set(*probe,"kiMode",0);set(*probe,"kWeightSc",0);set(*probe,"eqIn",0);
+        auto* r=probe->apvts.getParameter("ratioIndex");r->setValueNotifyingHost(r->convertTo0to1(float(selection)));probe->prepareToPlay(48000,48);
+        juce::AudioBuffer<float> b(2,48); for(int c=0;c<2;++c)for(int n=0;n<48;++n)b.setSample(c,n,0.25f);probe->processBlock(b,midi);return probe->reductionDb.load();
+    };
+    const auto limAttack=initialReduction(8),tenAttack=initialReduction(7);
+    check(limAttack>5 && limAttack>tenAttack+2,"LIM engages materially faster than 10:1 on the first millisecond");
+    std::cout<<"First-ms reduction LIM/10:1="<<limAttack<<"/"<<tenAttack<<" dB\n";
+    {
+        auto probe=std::make_unique<PWMToneBoyAudioProcessor>();probe->prepareToPlay(48000,128);auto* r=probe->apvts.getParameter("ratioIndex");juce::AudioBuffer<float> b(2,128);
+        for(int selection:{0,1,2,3,4,5,6,7,8,0,8,5})
+        {
+            r->setValueNotifyingHost(r->convertTo0to1(float(selection)));
+            for(int n=0;n<128;++n)for(int c=0;c<2;++c)b.setSample(c,n,float(0.1*std::sin(juce::MathConstants<double>::twoPi*997*n/48000)));
+            probe->processBlock(b,midi);finiteBuffer(b);
+        }
+    }
     const float shortRecovery=recovery(false), longRecovery=recovery(true);
-    check(longRecovery>shortRecovery+0.5f,"sustained program leaves longer release memory");
+    check(longRecovery>shortRecovery+0.05f && longRecovery<shortRecovery+0.5f,"program-dependent recovery is present but bounded rather than prolonged");
     std::cout<<"THD dB: clean="<<clean.thdDb<<", KI="<<coloured.thdDb<<", compressed="<<compressed.thdDb<<", bass50Hz="<<bass.thdDb<<"; KI H2/H3="<<coloured.h2Db<<"/"<<coloured.h3Db<<"; IMD 5+6kHz="<<imdClean.imdDb<<"/"<<imdKi.imdDb<<"; recovery short/long="<<shortRecovery<<"/"<<longRecovery<<" dB\n";
     auto testInput=std::make_unique<std::array<float,8192>>(), testOutput=std::make_unique<std::array<float,8192>>();
     auto analysis=ToneBoyHarmonicAnalysis::analyse(*testInput,*testOutput,48000);
@@ -383,6 +490,14 @@ int main(int argc,char** argv)
         check(screen->getObservedBandCount()>20,"A observes real broadband input/output while D processing remains unchanged");
         for(int click=0;click<5;++click) screen->advanceView();
         auto image=editor->createComponentSnapshot(editor->getLocalBounds()); auto out=juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]).getChildFile("UI-M4-A.png"); juce::FileOutputStream stream(out); stream.setPosition(0); stream.truncate(); juce::PNGImageFormat png; check(png.writeImageToStream(image,stream),"A-mode linear screen snapshot saved");
+    }
+    if(screen && argc>1)
+    {
+        auto* r=restored.apvts.getParameter("ratioIndex");r->setValueNotifyingHost(r->convertTo0to1(0));set(restored,"threshold",-24);
+        while(screen->getMode()!=2)screen->advanceView();
+        auto image=editor->createComponentSnapshot(editor->getLocalBounds());auto out=juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]).getChildFile("UI-1-to-5.png");juce::FileOutputStream stream(out);stream.setPosition(0);stream.truncate();juce::PNGImageFormat png;check(png.writeImageToStream(image,stream),"1:5 transfer-curve screenshot saved");
+        r->setValueNotifyingHost(r->convertTo0to1(8));set(restored,"threshold",-18);
+        auto limImage=editor->createComponentSnapshot(editor->getLocalBounds());auto limOut=juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]).getChildFile("UI-LIM.png");juce::FileOutputStream limStream(limOut);limStream.setPosition(0);limStream.truncate();check(png.writeImageToStream(limImage,limStream),"LIM transfer-curve screenshot saved");
     }
     // Produce audio at its actual sample-rate budget; consume only once per
     // 1/30 second of audio, with two missed refreshes to model a short GUI stall.

@@ -1,4 +1,4 @@
-# Guía de uso — PWM TONE BOY v1.4.3
+# Guía de uso — PWM TONE BOY v1.4.4
 
 **Creado por PAPIELGUAPO · Windows x64 · VST3 + Standalone**
 
@@ -19,11 +19,11 @@ Es un diseño original inspirado en comportamientos del STC-8. No se ha calibrad
 5. Compara **KI** encendido y apagado. Si quieres menos influencia del grave en la compresión, prueba **HPF SC**. Para más parte alta, compara **EQ IN** apagado (20 kHz) frente a encendido (11,2 kHz).
 6. Haz clic en la pantalla verde para recorrer sus seis vistas. **M4 = Linear Analysis**; **M5 = Harmonic Analysis**. Cambiar de pantalla no cambia el sonido.
 
-Arrastra las perillas para ajustar; **doble clic en la perilla restaura su valor inicial**. En esta versión no se escriben valores por doble clic ni hay EXP/UP. Las lámparas blancas indican activado; BYPASS activado significa señal seca.
+Arrastra las perillas para ajustar; **doble clic en la perilla restaura su valor inicial**. No hay escritura de valores por doble clic. Las posiciones 1:5, 1:3 y 1:2 expanden hacia arriba; no hay menú de modos EXP/UP. Las lámparas blancas indican activado; BYPASS activado significa señal seca.
 
 ## Descargar e instalar
 
-1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.4.3](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.4.3).
+1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.4.4](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.4.4).
 2. Descomprime el ZIP. Copia la carpeta completa `VST3/PWM TONE BOY.vst3` a `C:\Program Files\Common Files\VST3`. Cierra los programas que estén usando el plugin antes de sustituirlo. Windows puede solicitar permisos de administrador.
 3. Vuelve a escanear los plugins en tu DAW y carga **PWM TONE BOY**, fabricante **PAPIELGUAPO**.
 4. Para usarlo sin DAW, abre `Standalone/PWM TONE BOY.exe`.
@@ -39,14 +39,27 @@ El ZIP también incluye esta guía, las imágenes de la interfaz y de los nuevos
 - **Arrastra la esquina inferior derecha:** redimensiona del 80% al 200%, manteniendo las proporciones. El plugin recuerda el ancho con el estado del proyecto.
 - Mantén el puntero sobre un control para ver su ayuda. La rueda del ratón no modifica las perillas, evitando cambios accidentales.
 
+## Ratios de v1.4.4
+
+**1:5.0 → 1:3.0 → 1:2.0 → 1:1 → 2:1 → 3:1 → 5:1 → 10:1 → LIM**
+
+- **1:5.0, 1:3.0 y 1:2.0:** expansión por encima del umbral. Para realzar ataques, sitúa THRESHOLD en la zona de los picos y empieza con 1:2. Una entrada de 1 dB más produce aproximadamente 5, 3 o 2 dB más de salida en régimen estacionario, fuera de la rodilla y antes del tope de realce. No elevan específicamente lo que queda por debajo del umbral.
+- **1:1:** sin acción del control principal de ganancia, conservando filtros, KI/A y protección de picos.
+- **2:1–10:1:** compresión convencional. Para batería empieza en 3:1 o 5:1 y DECAY 100 ms; escucha cuánto recupera entre golpes antes de bajar mucho THRESHOLD.
+- **LIM:** sustituye a INF. Tiene pendiente estacionaria plana sobre el umbral y ataque nominal de 0,1 ms. No es un limitador true-peak con lookahead y OUTPUT sigue después de la protección de picos.
+
+20:1 se ha retirado. Los estados antiguos se convierten a las posiciones equivalentes; 20:1 pasa a 10:1 e INF a LIM. **La automatización de RATIO del host debe revisarse/reasignarse**, porque las posiciones normalizadas cambian al ampliar a nueve opciones. No confundir esa automatización con el estado guardado, que sí se migra.
+
+[Informe de dinámica y medidas](DINAMICA-v1.4.4.md).
+
 ## Perillas
 
 | Perilla | Qué hace | Rango y valor inicial |
 |---|---|---|
 | **PWM THRESHOLD** | Fija el umbral del compresor. Al bajarlo, una mayor parte de la señal entra en compresión. La rodilla hace que la transición alrededor del umbral sea gradual. El display inferior muestra dB. | −42 a 0 dB; inicial **−18 dB**. |
-| **B — RATIO** | Define la intensidad de la compresión por encima de la rodilla. 1:1 desactiva la reducción del compresor, pero conserva filtros, KI si está activo, Auto-Gain según su fórmula y protección de picos. INF es una relación interna de 100:1. | **1:1, 2:1, 3:1, 5:1, 10:1, 20:1, INF**; inicial **3:1**. |
-| **A — DECAY** | Ajusta la recuperación base de la dinámica. Valores cortos recuperan antes y largos mantienen más tiempo la reducción. El tiempo real también depende de la memoria de la compresión: no es un cronómetro fijo de vuelta a cero. | **100, 200, 400, 800 ms, 1.6 y 3.2 s**; inicial **200 ms**. |
-| **SELECT** | Control de reloj PWM heredado. Conserva su posición y lectura, pero **no modifica el audio en v1.4.3**, porque sample-and-hold y DAC están desactivados. | 4–250 kHz; inicial **120 kHz**. |
+| **B — RATIO** | Tres expansiones hacia arriba, unity, cuatro ratios de compresión y LIM. La pendiente nominal es válida fuera de la rodilla; las expansiones tienen un tope de +24 dB de realce. LIM usa pendiente estacionaria cero y ataque de 0,1 ms, sin lookahead. | **1:5.0, 1:3.0, 1:2.0, 1:1, 2:1, 3:1, 5:1, 10:1, LIM**; inicial **3:1**. |
+| **A — DECAY** | Recuperación principal en el dominio de ganancia. El detector estabiliza picos durante 12 ms y tiene su caída corta; la memoria del programa puede ampliar la constante nominal hasta un 15%. No significa que toda reducción desaparezca exactamente al cumplirse el tiempo indicado. | **100, 200, 400, 800, 1600 y 3200 ms**; inicial **200 ms**. |
+| **SELECT** | Control de reloj PWM heredado. Conserva su posición y lectura, pero **no modifica el audio en v1.4.4**, porque sample-and-hold y DAC están desactivados. | 4–250 kHz; inicial **120 kHz**. |
 | **OUTPUT** | Sube o baja el nivel procesado después de Auto-Gain y de la protección de picos. No modifica el umbral ni el ratio. Los cambios se suavizan durante 20 ms. Ganancias positivas pueden superar 0 dBFS después de la protección; comprueba el nivel de salida del DAW. En BYPASS se escucha la señal seca, sin OUTPUT. | **−24 a +12 dB**; inicial **0 dB**. |
 
 ## Palancas y botones
@@ -59,7 +72,7 @@ El ZIP también incluye esta guía, las imágenes de la interfaz y de los nuevos
 | **BYPASS** | Escucha la señal seca con el retraso que compensa la latencia del plugin. La transición es suave y el motor continúa actualizando sus estados. BATTERY se apaga. | Escucha la señal procesada. | Desactivado. |
 | **PAD** | Atenúa la entrada multiplicándola por **0.25**, aproximadamente **−12.04 dB**, antes del procesamiento. | Entrada sin esa atenuación. | Desactivado. |
 | **KI** | Añade una curvatura par sutil, principalmente segundo armónico, dependiente de actividad y compresión. | El waveshaper de la etapa KI es lineal; no quedan ni el antiguo logaritmo del semiciclo positivo ni una saturación permanente en esa etapa. | Activado. |
-| **PDA** | Ante riesgo de sobrecarga, acorta el ataque nominal de **2.2 ms** hacia **0.35 ms**. Trabaja junto al control de picos. | Mantiene el ataque nominal sin ese acortamiento dinámico. | Activado. |
+| **PDA** | En compresión, acorta el ataque nominal de 2,2 ms hacia 0,35 ms ante riesgo de sobrecarga. LIM emplea su ataque propio de 0,1 ms. | Mantiene el ataque nominal del compresor; no desactiva el ataque específico de LIM. | Activado. |
 | **H-SC** | Activa preénfasis diferencial en el sidechain y mezcla de detección **65% pico + 35% RMS**. Cambia cómo reacciona el compresor; no es un ecualizador directo de la salida. | Usa detección de pico sin ese preénfasis híbrido. | Activado. |
 
 ## Selector horizontal A / D
@@ -79,7 +92,7 @@ El ZIP también incluye esta guía, las imágenes de la interfaz y de los nuevos
 
 ## Auto-Gain y protección de picos
 
-Auto-Gain está siempre activo en la ruta procesada y no tiene botón propio. Su compensación se calcula a partir de umbral y ratio: `(-threshold × (1 − 1/ratio)) × 0.54 dB`. No es una normalización a LUFS ni garantiza que el volumen percibido coincida con bypass. Usa OUTPUT para comparar a oído a un nivel similar.
+Auto-Gain no tiene botón propio. En compresión se calcula como `(-threshold × (1 − 1/ratio)) × 0.54 dB`; en LIM se usa una pendiente de reducción de 1. En 1:5, 1:3 y 1:2 no añade compensación fija (0 dB). No es una normalización a LUFS ni garantiza que el volumen percibido coincida con bypass. Usa OUTPUT para comparar a oído a un nivel similar.
 
 La protección de picos actúa cerca de −0.45 dBFS antes de OUTPUT, con retención de 0.5 ms y recuperación de 60 ms. Después hay una curva de seguridad que permanece lineal hasta ±0.98. Al final, OUTPUT permite ajustar el volumen manualmente.
 
