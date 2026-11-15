@@ -10,6 +10,17 @@ PWM TONE BOY es un compresor estéreo con rodilla suave, recuperación con memor
 
 Es un diseño original inspirado en comportamientos del STC-8. No se ha calibrado contra un equipo Crane Song real y no se presenta como una réplica certificada. La etapa KI apagada es lineal; los filtros, la compresión y el color A/D siguen funcionando.
 
+## Cómo empezar en dos minutos
+
+1. Inserta PWM TONE BOY en una pista o bus. Conserva margen en entrada y salida.
+2. En el **selector horizontal de abajo**, elige **D = DIGITAL** para empezar con una ruta más limpia, o **A = ANALOG (analógico)** para el color y la variación real de A. **A está a la izquierda; D, a la derecha.** Este selector es distinto de la perilla superior A — DECAY.
+3. Empieza con **RATIO 3:1** y **DECAY 200 ms**. Baja THRESHOLD hasta ver aproximadamente 1–3 dB de GR en las partes fuertes. Es un punto de partida, no un objetivo obligatorio.
+4. Ajusta **OUTPUT** para que al activar BYPASS el volumen resulte parecido. Auto-Gain no lo iguala por sí solo.
+5. Compara **KI** encendido y apagado. Si quieres menos influencia del grave en la compresión, prueba **HPF SC**. Para más parte alta, compara **EQ IN** apagado (20 kHz) frente a encendido (11,2 kHz).
+6. Haz clic en la pantalla verde para recorrer sus seis vistas. **M4 = Linear Analysis**; **M5 = Harmonic Analysis**. Cambiar de pantalla no cambia el sonido.
+
+Arrastra las perillas para ajustar; **doble clic en la perilla restaura su valor inicial**. En esta versión no se escriben valores por doble clic ni hay EXP/UP. Las lámparas blancas indican activado; BYPASS activado significa señal seca.
+
 ## Descargar e instalar
 
 1. Descarga **PWM-TONE-BOY-Windows-x64.zip** en la [release v1.4.2](https://github.com/papielguapo/PWMToneBoy/releases/tag/v1.4.2).
@@ -35,7 +46,7 @@ El ZIP también incluye esta guía, las imágenes de la interfaz y de los nuevos
 | **PWM THRESHOLD** | Fija el umbral del compresor. Al bajarlo, una mayor parte de la señal entra en compresión. La rodilla hace que la transición alrededor del umbral sea gradual. El display inferior muestra dB. | −42 a 0 dB; inicial **−18 dB**. |
 | **B — RATIO** | Define la intensidad de la compresión por encima de la rodilla. 1:1 desactiva la reducción del compresor, pero conserva filtros, KI si está activo, Auto-Gain según su fórmula y protección de picos. INF es una relación interna de 100:1. | **1:1, 2:1, 3:1, 5:1, 10:1, 20:1, INF**; inicial **3:1**. |
 | **A — DECAY** | Ajusta la recuperación base de la dinámica. Valores cortos recuperan antes y largos mantienen más tiempo la reducción. El tiempo real también depende de la memoria de la compresión: no es un cronómetro fijo de vuelta a cero. | **100, 200, 400, 800 ms, 1.6 y 3.2 s**; inicial **200 ms**. |
-| **SELECT** | Control de reloj PWM heredado. Conserva su posición y lectura, pero **no modifica el audio en v1.2.1**, porque sample-and-hold y DAC están desactivados. | 4–250 kHz; inicial **120 kHz**. |
+| **SELECT** | Control de reloj PWM heredado. Conserva su posición y lectura, pero **no modifica el audio en v1.4.2**, porque sample-and-hold y DAC están desactivados. | 4–250 kHz; inicial **120 kHz**. |
 | **OUTPUT** | Sube o baja el nivel procesado después de Auto-Gain y de la protección de picos. No modifica el umbral ni el ratio. Los cambios se suavizan durante 20 ms. Ganancias positivas pueden superar 0 dBFS después de la protección; comprueba el nivel de salida del DAW. En BYPASS se escucha la señal seca, sin OUTPUT. | **−24 a +12 dB**; inicial **0 dB**. |
 
 ## Palancas y botones
@@ -53,7 +64,7 @@ El ZIP también incluye esta guía, las imágenes de la interfaz y de los nuevos
 
 ## Selector horizontal A / D
 
-Está en la antigua placa AUTO-GAIN. Un clic alterna entre **A**, a la izquierda, y **D**, a la derecha.
+**A de abajo = ANALOG / analógico. D de abajo = DIGITAL / digital.** Es el selector horizontal inferior: A está a la izquierda y D a la derecha. Un clic alterna entre ambos. No debe confundirse con A — DECAY, que es la perilla de recuperación.
 
 - **D — DIGITAL (valor inicial):** recupera la ruta digital de v1.1.0. Omite completamente los filtros y la saturación adicionales del perfil analógico. La carga de la etapa A no altera el sonido de D.
 - **KI sigue siendo independiente.** En D con KI activado se conserva el segundo armónico sutil de la versión anterior; con KI apagado esa etapa es lineal. D no equivale a bypass: el compresor, los filtros principales, Auto-Gain y la protección de picos siguen funcionando según sus controles.
@@ -76,7 +87,7 @@ El filtrado fijo incluye un paso alto de cuarto orden a **18 Hz** y un contorno 
 
 ## LCD: seis pantallas con un clic
 
-La interfaz actualiza sus diagnósticos a 60 Hz. Los títulos históricos permanecen en la skin; describimos aquí qué muestran realmente en esta versión.
+La interfaz actualiza sus diagnósticos a 30 Hz. Los títulos históricos permanecen en la skin; describimos aquí qué muestran realmente en esta versión.
 
 | Pantalla | Qué ves y cómo interpretarlo |
 |---|---|
@@ -101,7 +112,7 @@ La variación es deliberadamente sutil: límites de ±0.025 dB en el pico de gra
 
 Se muestra **A I/O+MODEL**. Solo se usa la respuesta observada donde hay excitación suficiente (aproximadamente por encima de −70 dBFS por bin), tres ventanas consecutivas activas y coherencia superior a 0.70. Donde faltan datos fiables se conserva el modelo, en lugar de inventar una medición. Con un único seno, solo las bandas excitadas aportan información real; una señal estable puede producir una curva estable. No se fuerza un temblor permanente.
 
-Las estimaciones proceden de ventanas de 8192 muestras, actualizadas aproximadamente hasta seis veces por segundo. La transición de la curva se suaviza en la interfaz a 60 Hz para no saltar entre ventanas. Esta suavización no modifica el audio.
+Las estimaciones proceden de ventanas de 8192 muestras, actualizadas aproximadamente hasta seis veces por segundo. La transición de la curva se suaviza en la interfaz a 30 Hz para no saltar entre ventanas. Esta suavización no modifica el audio.
 
 **En D no se aplica esta nueva visualización observada.** Conserva su modelo de respuesta y la reducción de ganancia real, como en v1.2.1. La ruta digital, KI, PDA y H-SC conservan su comportamiento normal; v1.4.0 añade además protecciones ante muestras inválidas y metadatos de host fuera de rango.
 
@@ -132,7 +143,7 @@ Con música o tono no válido, las curvas siguen visibles pero THD y THD+N muest
 
 Para medidas, envía un seno desde tu DAW o carga un WAV de un seno en Standalone. Empieza por 1 kHz a −18 dBFS pico y espera a que compresión y carga se estabilicen. Se necesitan ocho ciclos por ventana (`8 × sampleRate / 8192`: aproximadamente 47 Hz a 48 kHz y 188 Hz a 192 kHz). Se rechazan fundamentales iguales o superiores a una quinta parte de la frecuencia de muestreo y entradas inferiores a aproximadamente −80 dBFS RMS.
 
-La FFT y las medidas se actualizan aproximadamente hasta seis veces por segundo, fuera del callback de audio; la LCD se dibuja a 60 Hz. Las cifras inferiores a −90 dB se muestran como **<-90**. Son estimaciones sin ponderación ni certificación de laboratorio, no equivalentes a todas las funciones de un analizador externo.
+La FFT y las medidas se actualizan aproximadamente hasta seis veces por segundo, fuera del callback de audio; la LCD se dibuja a 30 Hz. Las cifras inferiores a −90 dB se muestran como **<-90**. Son estimaciones sin ponderación ni certificación de laboratorio, no equivalentes a todas las funciones de un analizador externo.
 
 ### Medidores inferiores, siempre visibles
 
@@ -198,3 +209,22 @@ Se recuperan DotMatrixLCDComponent y HarmonicAnalysisWorker del último estado a
 La versión recuperada calcula el ajuste armónico en un hilo del editor, descarta resultados de contextos anteriores y refresca la LCD a 30 Hz. Incluye la textura de puntos en caché. Se conserva el título PWM ampliado, D limpio, ratio/release por pasos y los 16 parámetros originales. No incluye EXP ni UP ni parámetros continuos. El circuito de audio A no requería otro cambio respecto a v1.4.0; esta recuperación trae el analizador posterior.
 
 Validación v1.4.2: 3.940 aserciones sin fallos; análisis armónico en segundo plano equivalente a la referencia y rechazo de resultados antiguos. Se comprobaron las referencias anteriores de A/D, silencio, seis vistas y tamaños de editor. Los archivos de análisis se compararon con v1.6.0: coinciden salvo la adaptación del acceso al ratio por pasos.
+
+## Usos prácticos y casos especiales
+
+Estos ajustes son puntos de partida para escuchar, no presets medidos como óptimos. El plugin no es imprescindible: consérvalo si aporta una mejora al comparar a volumen parecido.
+
+| Fuente o problema | Prueba inicial | Qué escuchar |
+|---|---|---|
+| Bus de batería | 2:1–3:1, DECAY 100–200 ms, poca GR | Unión y control de golpes; si el bombo domina, prueba HPF SC. |
+| Bajo | 3:1, DECAY 200–400 ms | Nivel de notas más uniforme; compara KI para decidir si aporta armónicos útiles. |
+| Voz | 2:1–3:1, DECAY 100–200 ms, empieza en D | Frases más estables, sin respiración exagerada. Sube DECAY si la recuperación se oye nerviosa. |
+| Bus de mezcla | 2:1, aproximadamente 0,5–1,5 dB de GR | Cohesión sin perder ataques. Compara A/D e iguala OUTPUT. |
+| Solo color | Ratio 1:1, compara A y KI | El compresor no reduce, pero filtros, color y protección de picos siguen presentes. |
+| Picos aislados | Compara PDA activado/desactivado | El ataque se acorta dinámicamente cerca de sobrecarga. No equivale a un control manual de ataque. |
+
+**Paralelo:** crea un envío o duplicado en el DAW, comprime el retorno y mézclalo con la señal original. No hay control dry/wet interno; comprueba la compensación de latencia del host (6 muestras declaradas) y posibles cambios de fase por los filtros.
+
+**No uses los piquitos como objetivo sonoro.** M4 en A combina transferencia observada y modelo; una señal estable puede dar una curva estable. M5 muestra espectro con música, pero THD/THD+N solo son interpretables con un tono válido.
+
+**Tasas altas:** la auditoría detecta un límite pendiente de la telemetría a 176,4/192 kHz. Puede perder datos o reiniciar el analizador aunque el audio continúe. Consulta la [auditoría actual](AUDITORIA-v1.4.2.md). La protección de picos tampoco garantiza un techo después de OUTPUT: revisa la salida del DAW.

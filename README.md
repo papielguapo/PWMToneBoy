@@ -1,14 +1,27 @@
 # PWM TONE BOY — PAPIELGUAPO
 
-**v1.4.2 · Analizador A de la última versión anterior a la vuelta atrás, sin EXP/UP.**
+**Compresor estéreo con color armónico · Windows x64 · VST3 + Standalone · v1.4.2**
 
-Título PWM más grande, sólido y junto a TONE BOY. El analizador y la vista A se recuperan de v1.6.0, adaptando únicamente la lectura del ratio a las siete posiciones originales. El circuito de audio A ya coincide con esa versión; se mantiene D limpio.
+**Selector de abajo: A = ANALOG (analógico), D = DIGITAL (digital).** A aporta color y variación real; D omite esa rama y mantiene la ruta más limpia. KI es independiente. Ratio y DECAY por pasos, sin EXP ni UP.
 
 ![PWM TONE BOY](docs/images/PWM-TONE-BOY.png)
 
 - **[Descargar VST3 + Standalone — Windows x64](https://github.com/papielguapo/PWMToneBoy/releases/download/v1.4.2/PWM-TONE-BOY-Windows-x64.zip)**
 - **[Guía completa en español](docs/GUIA-ES.md)**
-- **[Auditoría v1.4.0: hallazgos, correcciones, medidas y límites](docs/AUDITORIA-v1.4.0.md)**
+- **[Auditoría actual v1.4.2: pruebas, hallazgos y límites](docs/AUDITORIA-v1.4.2.md)**
+
+## Cómo empezar en dos minutos
+
+1. Inserta PWM TONE BOY en una pista o bus. Conserva margen en entrada y salida.
+2. En el **selector horizontal de abajo**, elige **D = DIGITAL** para empezar con una ruta más limpia, o **A = ANALOG (analógico)** para el color y la variación real de A. **A está a la izquierda; D, a la derecha.** Este selector es distinto de la perilla superior A — DECAY.
+3. Empieza con **RATIO 3:1** y **DECAY 200 ms**. Baja THRESHOLD hasta ver aproximadamente 1–3 dB de GR en las partes fuertes. Es un punto de partida, no un objetivo obligatorio.
+4. Ajusta **OUTPUT** para que al activar BYPASS el volumen resulte parecido. Auto-Gain no lo iguala por sí solo.
+5. Compara **KI** encendido y apagado. Si quieres menos influencia del grave en la compresión, prueba **HPF SC**. Para más parte alta, compara **EQ IN** apagado (20 kHz) frente a encendido (11,2 kHz).
+6. Haz clic en la pantalla verde para recorrer sus seis vistas. **M4 = Linear Analysis**; **M5 = Harmonic Analysis**. Cambiar de pantalla no cambia el sonido.
+
+Arrastra las perillas para ajustar; **doble clic en la perilla restaura su valor inicial**. En esta versión no se escriben valores por doble clic ni hay EXP/UP. Las lámparas blancas indican activado; BYPASS activado significa señal seca.
+
+**Límite conocido:** a 176,4/192 kHz el analizador puede perder telemetría; el problema afecta a la visualización, no al flujo de audio. Está pendiente de corregir y documentado en la auditoría. La documentación se actualizó el 15 de noviembre de 2026 sin cambiar los binarios.
 
 ## A cambia la señal, no solo la LCD
 
